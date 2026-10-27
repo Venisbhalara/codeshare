@@ -32,8 +32,32 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-codeshare-auth-mutation'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  }
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 app.use(cookieParser());
 app.use(express.json({ limit: '512kb' }));
+
+// Health check endpoint for Render
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok', version: 'v3.40.0' });
+});
 
 // Static assets under /-/ and /shared/
 app.use('/-/css', express.static(path.join(__dirname, '..', 'public', 'css')));

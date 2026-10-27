@@ -201,7 +201,8 @@ function renderGlobalDialogs({ me, codeshare = null }) {
 }
 
 function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, includeCodeMirror = false }) {
-  const payload = JSON.stringify({ me, codeshare, apiHeaders }).replace(/</g, '\\u003c');
+  const backendUrl = process.env.PUBLIC_BACKEND_URL || '';
+  const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
   <script src="/shared/lenis.min.js?v=v3.40.7"></script>

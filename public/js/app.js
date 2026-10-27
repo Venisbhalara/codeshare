@@ -275,8 +275,17 @@
 
     connectWebSocket() {
       if (Date.now() < this.reconnectBlockedUntil) return;
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${proto}//${window.location.host}/-/api/graphql`;
+      const backendOrigin = String(
+        BOOTSTRAP.backendUrl || window.CODESHARE_BACKEND_URL || ''
+      ).replace(/\/+$/, '');
+      let wsUrl;
+      if (backendOrigin) {
+        const wsOrigin = backendOrigin.replace(/^http/i, 'ws');
+        wsUrl = `${wsOrigin}/-/api/graphql`;
+      } else {
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${proto}//${window.location.host}/-/api/graphql`;
+      }
 
       try {
         this.ws = new WebSocket(wsUrl, 'codeshare-graphql-ws');
@@ -453,10 +462,17 @@
         const headers = {
           'Content-Type': 'application/json'
         };
+        if (BOOTSTRAP.apiHeaders && BOOTSTRAP.apiHeaders.authorization) {
+          headers['Authorization'] = BOOTSTRAP.apiHeaders.authorization;
+        }
         if (isAuthMutation) {
           headers['x-codeshare-auth-mutation'] = 'true';
         }
-        const resp = await fetch('/-/api/graphql', {
+        const backendOrigin = String(
+          BOOTSTRAP.backendUrl || window.CODESHARE_BACKEND_URL || ''
+        ).replace(/\/+$/, '');
+        const graphqlUrl = backendOrigin ? `${backendOrigin}/-/api/graphql` : '/-/api/graphql';
+        const resp = await fetch(graphqlUrl, {
           method: 'POST',
           headers,
           credentials: 'same-origin',

@@ -8,7 +8,8 @@ const db = require('./db');
 const {
   setSessionCookies,
   getOrCreateSession,
-  signJwt
+  signJwt,
+  verifyJwt
 } = require('./auth');
 
 // ============================================================================
@@ -860,6 +861,20 @@ function attachWebSocketHandler(wss) {
       }
 
       if (msg.type === 'connection_init') {
+        const initAuth =
+          msg.payload && (msg.payload.authorization || msg.payload.Authorization);
+        if (initAuth) {
+          const jwtPayload = verifyJwt(initAuth);
+          if (jwtPayload) {
+            const matchedUser =
+              db.getUserByRawId(jwtPayload.rawUserId) ||
+              db.getUserByRawId(`anon:${jwtPayload.id}`) ||
+              db.getUserByRawId(jwtPayload.id);
+            if (matchedUser) {
+              currentUser = matchedUser;
+            }
+          }
+        }
         ws.send(JSON.stringify({ type: 'connection_ack' }));
         ws.send(JSON.stringify({ type: 'ka' }));
         return;

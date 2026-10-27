@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const {
@@ -16,7 +17,9 @@ const {
   DEFAULT_THEME
 } = require('../shared/catalog');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  (process.env.VERCEL ? path.join(os.tmpdir(), 'codeshare-data') : path.join(__dirname, '..', 'data'));
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -90,17 +93,17 @@ class Database {
   }
 
   load() {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(DB_FILE)) {
-      try {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf8');
         const parsed = JSON.parse(raw);
         this.state = Object.assign(this.state, parsed);
-      } catch (err) {
-        console.error('[DB] Failed to parse store.json, starting fresh:', err.message);
       }
+    } catch (err) {
+      console.error('[DB] Failed to load store.json, starting fresh:', err.message);
     }
     this.seedDefaults();
   }

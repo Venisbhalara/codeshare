@@ -11,7 +11,9 @@ const { app } = require('../server/index');
  */
 module.exports = (req, res) => {
   const backendOrigin = String(
-    process.env.RENDER_BACKEND_URL || process.env.PUBLIC_BACKEND_URL || ''
+    process.env.RENDER_BACKEND_URL ||
+      process.env.PUBLIC_BACKEND_URL ||
+      'https://codeshare-backend-ydnn.onrender.com'
   )
     .trim()
     .replace(/\/+$/, '');
@@ -101,3 +103,4 @@ module.exports = (req, res) => {
     req.pipe(proxyReq);
   }
 };
+

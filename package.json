@@ -1,0 +1,17 @@
+{
+  "name": "codeshare-clone",
+  "version": "3.40.0",
+  "description": "Minimalist Real-Time Collaborative Code Editor — Full Codeshare.io Architecture (GraphQL HTTP/WS + Operational Transformation + CodeMirror)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node test/verify.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "express": "^4.21.1",
+    "lenis": "^1.3.27",
+    "ws": "^8.18.0"
+  }
+}

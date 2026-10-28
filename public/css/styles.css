@@ -51,23 +51,6 @@
   --scrollbar-thumb-light: #C4BEB0;
   --scrollbar-thumb-dark: #3B4D61;
 
-  /* Home-Page Architectural Cross Grill & Studio Glow Tokens */
-  --glow-primary-light: rgba(45, 106, 79, 0.085);
-  --glow-primary-dark: rgba(82, 183, 136, 0.095);
-  --glow-secondary-light: rgba(184, 93, 59, 0.09);
-  --glow-secondary-dark: rgba(244, 162, 126, 0.085);
-
-  --grill-major-light: rgba(27, 67, 50, 0.14);
-  --grill-major-dark: rgba(52, 211, 153, 0.15);
-  --grill-minor-light: rgba(24, 34, 29, 0.055);
-  --grill-minor-dark: rgba(244, 247, 245, 0.055);
-  --grill-diagonal-light: rgba(184, 93, 59, 0.095);
-  --grill-diagonal-dark: rgba(244, 162, 126, 0.095);
-  --grill-node-light: rgba(27, 67, 50, 0.40);
-  --grill-node-dark: rgba(52, 211, 153, 0.46);
-  --grill-center-node-light: rgba(184, 93, 59, 0.32);
-  --grill-center-node-dark: rgba(244, 162, 126, 0.36);
-
   /* Default Light Token Fallbacks */
   --bg-canvas: var(--bg-canvas-light);
   --bg-elevated: var(--bg-elevated-light);
@@ -86,13 +69,6 @@
   --accent-danger: var(--accent-danger-light);
   --accent-danger-bg: var(--accent-danger-bg-light);
   --scrollbar-thumb: var(--scrollbar-thumb-light);
-  --glow-primary: var(--glow-primary-light);
-  --glow-secondary: var(--glow-secondary-light);
-  --grill-major: var(--grill-major-light);
-  --grill-minor: var(--grill-minor-light);
-  --grill-diagonal: var(--grill-diagonal-light);
-  --grill-node: var(--grill-node-light);
-  --grill-center-node: var(--grill-center-node-light);
 
   /* Fallback for browsers without light-dark() support */
   @media (prefers-color-scheme: dark) {
@@ -114,13 +90,6 @@
     --accent-danger: var(--accent-danger-dark);
     --accent-danger-bg: var(--accent-danger-bg-dark);
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
-    --glow-primary: var(--glow-primary-dark);
-    --glow-secondary: var(--glow-secondary-dark);
-    --grill-major: var(--grill-major-dark);
-    --grill-minor: var(--grill-minor-dark);
-    --grill-diagonal: var(--grill-diagonal-dark);
-    --grill-node: var(--grill-node-dark);
-    --grill-center-node: var(--grill-center-node-dark);
   }
 
   /* Reflect <meta name="color-scheme"> override in CSS (modern-web-guidance: dark-mode-toggle) */
@@ -144,13 +113,6 @@
     --accent-danger: var(--accent-danger-dark);
     --accent-danger-bg: var(--accent-danger-bg-dark);
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
-    --glow-primary: var(--glow-primary-dark);
-    --glow-secondary: var(--glow-secondary-dark);
-    --grill-major: var(--grill-major-dark);
-    --grill-minor: var(--grill-minor-dark);
-    --grill-diagonal: var(--grill-diagonal-dark);
-    --grill-node: var(--grill-node-dark);
-    --grill-center-node: var(--grill-center-node-dark);
   }
 
   &:has(> head > meta[name="color-scheme"][content="light"]) {
@@ -173,13 +135,6 @@
     --accent-danger: var(--accent-danger-light);
     --accent-danger-bg: var(--accent-danger-bg-light);
     --scrollbar-thumb: var(--scrollbar-thumb-light);
-    --glow-primary: var(--glow-primary-light);
-    --glow-secondary: var(--glow-secondary-light);
-    --grill-major: var(--grill-major-light);
-    --grill-minor: var(--grill-minor-light);
-    --grill-diagonal: var(--grill-diagonal-light);
-    --grill-node: var(--grill-node-light);
-    --grill-center-node: var(--grill-center-node-light);
   }
 
   @supports (color: light-dark(white, black)) {
@@ -200,13 +155,6 @@
     --accent-danger: light-dark(var(--accent-danger-light), var(--accent-danger-dark));
     --accent-danger-bg: light-dark(var(--accent-danger-bg-light), var(--accent-danger-bg-dark));
     --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
-    --glow-primary: light-dark(var(--glow-primary-light), var(--glow-primary-dark));
-    --glow-secondary: light-dark(var(--glow-secondary-light), var(--glow-secondary-dark));
-    --grill-major: light-dark(var(--grill-major-light), var(--grill-major-dark));
-    --grill-minor: light-dark(var(--grill-minor-light), var(--grill-minor-dark));
-    --grill-diagonal: light-dark(var(--grill-diagonal-light), var(--grill-diagonal-dark));
-    --grill-node: light-dark(var(--grill-node-light), var(--grill-node-dark));
-    --grill-center-node: light-dark(var(--grill-center-node-light), var(--grill-center-node-dark));
   }
 
   --accent-gold-bg: color-mix(in oklab, var(--accent-gold), transparent 86%);
@@ -308,10 +256,6 @@
   .brand-select {
     border: 1px solid ButtonText;
   }
-
-  .home-cross-grill {
-    display: none !important;
-  }
 }
 
 *,
@@ -339,11 +283,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  position: relative;
-  isolation: isolate;
-}
-
 /* GPU-Composited Ambient Studio Glow Layer (Zero Main-Thread Scroll Repaints) */
 body::before {
   content: "";
@@ -352,60 +291,14 @@ body::before {
   pointer-events: none;
   z-index: -1;
   transform: translateZ(0);
-  background-image:
-    radial-gradient(circle at 18% 12%, var(--glow-primary) 0%, transparent 44%),
-    radial-gradient(circle at 82% 24%, var(--glow-secondary) 0%, transparent 46%);
-}
-
-/* ==========================================================================
-   Home-Page-Only Architectural Cross Grill Background
-   ========================================================================== */
-body.home-page > .page-container {
-  position: relative;
-  z-index: 1;
-}
-
-.home-cross-grill {
-  display: none;
-}
-
-body.home-page > .home-cross-grill {
-  display: block;
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  background-image:
-    linear-gradient(to right, var(--grill-major) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grill-major) 1px, transparent 1px),
-    linear-gradient(to right, var(--grill-minor) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grill-minor) 1px, transparent 1px);
-  background-size:
-    64px 64px,
-    64px 64px,
-    16px 16px,
-    16px 16px;
-  -webkit-mask-image: radial-gradient(
-    ellipse 96% 90% at 50% 38%,
-    #000 52%,
-    rgba(0, 0, 0, 0.72) 80%,
-    rgba(0, 0, 0, 0.25) 100%
+  background-image: light-dark(
+    radial-gradient(circle at 18% 12%, rgba(45, 106, 79, 0.08) 0%, transparent 42%),
+    radial-gradient(circle at 18% 12%, rgba(82, 183, 136, 0.08) 0%, transparent 42%)
+  ),
+  light-dark(
+    radial-gradient(circle at 82% 24%, rgba(184, 93, 59, 0.09) 0%, transparent 45%),
+    radial-gradient(circle at 82% 24%, rgba(229, 152, 118, 0.08) 0%, transparent 45%)
   );
-  mask-image: radial-gradient(
-    ellipse 96% 90% at 50% 38%,
-    #000 52%,
-    rgba(0, 0, 0, 0.72) 80%,
-    rgba(0, 0, 0, 0.25) 100%
-  );
-}
-
-.home-cross-grill-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 /* Lenis Smooth Scroll Official Rules */

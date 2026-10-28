@@ -596,22 +596,23 @@ a {
     max-inline-size: clamp(72px, 34cqi, 200px);
   }
 
-  .btn-icon-responsive {
-    width: 34px;
-    height: 34px;
-    padding: 0;
+  .btn.btn-icon-responsive {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    gap: 0;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
-  .btn-icon-responsive .btn-label {
+  .btn.btn-icon-responsive .btn-label {
     display: none;
   }
 
   #codeshare-share-button {
-    height: 34px;
-    padding: 0 12px;
-    font-size: 12px;
+    height: 36px;
+    padding: 0 13px;
+    font-size: 12.5px;
     gap: 5px;
   }
 }
@@ -645,9 +646,9 @@ a {
   }
 
   .brand-mark {
-    width: 30px;
-    height: 30px;
-    border-radius: 8.5px;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
   }
 
   .room-title-pill {
@@ -657,22 +658,23 @@ a {
     max-inline-size: clamp(72px, 32vw, 180px);
   }
 
-  .btn-icon-responsive {
-    width: 34px;
-    height: 34px;
-    padding: 0;
+  .btn.btn-icon-responsive {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    gap: 0;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
-  .btn-icon-responsive .btn-label {
+  .btn.btn-icon-responsive .btn-label {
     display: none;
   }
 
   #codeshare-share-button {
-    height: 34px;
-    padding: 0 12px;
-    font-size: 12px;
+    height: 36px;
+    padding: 0 13px;
+    font-size: 12.5px;
     gap: 5px;
   }
 
@@ -744,6 +746,15 @@ a {
   transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.1s ease, box-shadow 0.16s ease;
   user-select: none;
   white-space: nowrap;
+}
+
+.btn svg {
+  flex: none;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
 }
 
 .btn-pill {

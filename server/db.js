@@ -280,8 +280,15 @@ class Database {
     }
 
     Object.values(this.state.codeshares).forEach((cs) => {
-      if (cs) this.ensureCodeshareFiles(cs);
+      if (cs) {
+        cs.slug = cs.id;
+        if (cs.id === 'G8WoB4') {
+          cs.title = 'G8WoB4';
+        }
+        this.ensureCodeshareFiles(cs);
+      }
     });
+    this.saveSync();
   }
 
   ensureCodeshareFiles(cs) {
@@ -739,20 +746,10 @@ class Database {
     return codeshare;
   }
 
-  getCodeshareByShortId(shortIdOrSlug) {
-    if (!shortIdOrSlug) return null;
+  getCodeshareByShortId(shortId) {
+    if (!shortId) return null;
     this.pruneExpiredCodeshares();
-    if (this.state.codeshares[shortIdOrSlug]) {
-      return this.state.codeshares[shortIdOrSlug];
-    }
-    const lower = String(shortIdOrSlug).toLowerCase();
-    return (
-      Object.values(this.state.codeshares).find(
-        (cs) =>
-          (cs.slug && cs.slug.toLowerCase() === lower) ||
-          (cs.title && toUrlSlug(cs.title, cs.id).toLowerCase() === lower)
-      ) || null
-    );
+    return this.state.codeshares[shortId] || null;
   }
 
   getOrCreateCodeshareByShortId(shortId, creatorUser) {
@@ -781,6 +778,7 @@ class Database {
         createdAt: now,
         updatedAt: now
       };
+      this.ensureCodeshareFiles(cs);
       this.state.codeshares[shortId] = cs;
       this.state.codeHistories[shortId] = [];
       this.state.codeshareUsers[shortId] = {};
@@ -821,17 +819,7 @@ class Database {
 
     if (typeof input.title === 'string') {
       cs.title = input.title.slice(0, 120);
-      let candidateSlug = toUrlSlug(cs.title, cs.id);
-      const conflict = Object.values(this.state.codeshares).find(
-        (other) =>
-          other.id !== cs.id &&
-          (other.id.toLowerCase() === candidateSlug.toLowerCase() ||
-            (other.slug && other.slug.toLowerCase() === candidateSlug.toLowerCase()))
-      );
-      if (conflict) {
-        candidateSlug = `${candidateSlug}-${cs.id}`;
-      }
-      cs.slug = candidateSlug;
+      cs.slug = cs.id;
     }
     if (typeof input.modeName === 'string') {
       cs.modeName = input.modeName;
@@ -869,10 +857,10 @@ class Database {
               ? action.id
               : `file-${randomShortId(6)}`;
           if (!cs.files.some((f) => f.id === newId)) {
-            const name = sanitizeFilename(action.name, `file-${cs.files.length + 1}.js`);
+            const name = sanitizeFilename(action.name, `file-${cs.files.length + 1}.txt`);
             const modeName = inferModeNameFromFilename(
               name,
-              action.modeName || cs.modeName || DEFAULT_MODE_NAME
+              action.modeName || DEFAULT_MODE_NAME
             );
             cs.files.push({
               id: newId,

@@ -212,7 +212,6 @@ async function runVerification() {
     assert(appJsRes.body.includes('triggerCopyCode'));
 
     const customTitle = `Studio Session ${shortId}`;
-    const expectedSlug = `Studio-Session-${shortId}`;
     const gqlRenameBody = JSON.stringify({
       operationName: 'updateCodeshareMutation',
       query: 'mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id slug title } } }',
@@ -237,27 +236,29 @@ async function runVerification() {
     );
     assert.strictEqual(renameRes.status, 200);
     const renameJson = JSON.parse(renameRes.body);
-    assert.strictEqual(renameJson.data.updateCodeshare.codeshare.slug, expectedSlug);
+    assert.strictEqual(renameJson.data.updateCodeshare.codeshare.slug, shortId);
     assert.strictEqual(renameJson.data.updateCodeshare.codeshare.title, customTitle);
 
-    const slugRoomRes = await httpRequest(port, {
-      path: `/${expectedSlug}`,
+    const origRoomRes = await httpRequest(port, {
+      path: `/${shortId}`,
       method: 'GET',
       headers: { Cookie: cookieHeader }
     });
-    assert.strictEqual(slugRoomRes.status, 200);
-    assert(slugRoomRes.body.includes(customTitle));
-    assert(slugRoomRes.body.includes(`"shortId":"${shortId}"`));
-    assert(slugRoomRes.body.includes('id="codeshare-copy-button"'));
-    assert(slugRoomRes.body.includes('id="permalink-banner"'));
-    assert(slugRoomRes.body.includes('id="permalink-copy-url-btn"'));
-    assert(slugRoomRes.body.includes('id="permalink-copy-lines-btn"'));
-    assert(slugRoomRes.body.includes('id="status-permalink-btn"'));
-    assert(slugRoomRes.body.includes('id="editor-tabs-list"'));
-    assert(slugRoomRes.body.includes('id="add-file-tab-btn"'));
+    assert.strictEqual(origRoomRes.status, 200);
+    assert(origRoomRes.body.includes(customTitle));
+    assert(origRoomRes.body.includes(`"shortId":"${shortId}"`));
+    assert(origRoomRes.body.includes('Hello Codeshare!'));
+    assert(origRoomRes.body.includes('id="codeshare-copy-button"'));
+    assert(origRoomRes.body.includes('id="permalink-banner"'));
+    assert(origRoomRes.body.includes('id="permalink-copy-url-btn"'));
+    assert(origRoomRes.body.includes('id="permalink-copy-lines-btn"'));
+    assert(origRoomRes.body.includes('id="status-permalink-btn"'));
+    assert(origRoomRes.body.includes('id="editor-tabs-list"'));
+    assert(origRoomRes.body.includes('id="add-file-tab-btn"'));
     console.log('✓ One-Click Copy Code & Smart Line-Range Permalinks (#L10-L22) verified.');
 
-    // Verify Multi-Tab / Multi-File Rooms (create, update, rename, delete file tabs via GraphQL)
+    // Verify Multi-Tab / Multi-File Rooms (default .txt format on create, rename, update via GraphQL)
+    assert(appJsRes.body.includes('`file-${fileNum}.txt`'));
     const demoRoomRes = await httpRequest(port, { path: '/G8WoB4', method: 'GET' });
     assert.strictEqual(demoRoomRes.status, 200);
     assert(demoRoomRes.body.includes('collaborate.js'));
@@ -272,10 +273,7 @@ async function runVerification() {
           id: encodeRelayId('Codeshare', shortId),
           fileAction: {
             type: 'create',
-            id: 'file-styles',
-            name: 'styles.css',
-            modeName: 'CSS',
-            content: '.card { border-radius: 16px; }\n',
+            id: 'file-txt-2',
             clientId: 'test-client-A'
           }
         }
@@ -297,10 +295,10 @@ async function runVerification() {
     const createTabJson = JSON.parse(createTabRes.body);
     const createdFiles = createTabJson.data.updateCodeshare.codeshare.files;
     assert.strictEqual(createdFiles.length, 2);
-    assert.strictEqual(createdFiles[1].id, 'file-styles');
-    assert.strictEqual(createdFiles[1].name, 'styles.css');
-    assert.strictEqual(createdFiles[1].modeName, 'CSS');
-    assert.strictEqual(createdFiles[1].content, '.card { border-radius: 16px; }\n');
+    assert.strictEqual(createdFiles[1].id, 'file-txt-2');
+    assert.strictEqual(createdFiles[1].name, 'file-2.txt');
+    assert.strictEqual(createdFiles[1].modeName, 'Plain Text');
+    assert.strictEqual(createdFiles[1].content, '');
 
     const renameTabBody = JSON.stringify({
       operationName: 'updateCodeshareFileActionMutation',
@@ -310,7 +308,7 @@ async function runVerification() {
           id: encodeRelayId('Codeshare', shortId),
           fileAction: {
             type: 'rename',
-            id: 'file-styles',
+            id: 'file-txt-2',
             name: 'notes.md',
             modeName: 'Markdown',
             clientId: 'test-client-A'
@@ -335,19 +333,29 @@ async function runVerification() {
     const renamedFiles = renameTabJson.data.updateCodeshare.codeshare.files;
     assert.strictEqual(renamedFiles[1].name, 'notes.md');
     assert.strictEqual(renamedFiles[1].modeName, 'Markdown');
-    console.log('✓ Multi-Tab / Multi-File Rooms (create, rename, update & real-time sync) verified.');
+    console.log('✓ Multi-Tab / Multi-File Rooms (.txt default on New File, rename, update & real-time sync) verified.');
 
-    // Verify URL -> Title Sync (changing URL in browser address bar updates room Title)
-    const urlDrivenSlug = `Url-Driven-Title-${shortId}`;
-    const urlSyncRes = await httpRequest(port, {
-      path: `/${urlDrivenSlug}`,
+    // Verify URL Change Isolation: changing the URL in the browser opens a brand-new empty room
+    // and keeps the original code in the original URL room!
+    const newUrlRoomId = `FreshRoom_${shortId}`;
+    const newUrlRes = await httpRequest(port, {
+      path: `/${newUrlRoomId}`,
       method: 'GET',
       headers: { Cookie: cookieHeader }
     });
-    assert.strictEqual(urlSyncRes.status, 200);
-    assert(urlSyncRes.body.includes(`"shortId":"${shortId}"`));
-    assert(urlSyncRes.body.includes(`"title":"${urlDrivenSlug}"`));
-    console.log(`✓ Two-way Title <-> URL Sync (/${expectedSlug} & /${urlDrivenSlug} -> room ${shortId}) verified.`);
+    assert.strictEqual(newUrlRes.status, 200);
+    assert(newUrlRes.body.includes(`"shortId":"${newUrlRoomId}"`));
+    assert(!newUrlRes.body.includes('Hello Codeshare!'));
+
+    const oldUrlCheckRes = await httpRequest(port, {
+      path: `/${shortId}`,
+      method: 'GET',
+      headers: { Cookie: cookieHeader }
+    });
+    assert.strictEqual(oldUrlCheckRes.status, 200);
+    assert(oldUrlCheckRes.body.includes(`"shortId":"${shortId}"`));
+    assert(oldUrlCheckRes.body.includes('Hello Codeshare!'));
+    console.log(`✓ URL Isolation verified: /${newUrlRoomId} opens empty while /${shortId} preserves all its code.`);
 
     wsA.close();
     wsB.close();

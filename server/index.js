@@ -305,41 +305,10 @@ app.get('/:codeshareId', (req, res) => {
   }
 
   const { user, session, apiHeaders } = getOrCreateSession(req, res);
+  // Each URL (:codeshareId) is strictly its own independent room.
+  // If no room exists at this URL yet, create a brand-new empty room at this URL
+  // while keeping all previous rooms and their code intact at their own URLs.
   let cs = db.getCodeshareByShortId(shortId);
-
-  // Two-way URL <-> Title Sync:
-  // 1) If the user is actively inside an editable room (`session.activeCodeshareId`) and changes
-  //    the URL in the browser address bar to a new custom slug, rename their active room's title & slug!
-  if (!cs && session && session.activeCodeshareId) {
-    const activeCs = db.getCodeshareByShortId(session.activeCodeshareId);
-    if (
-      activeCs &&
-      activeCs.id !== 'G8WoB4' &&
-      activeCs.createdByUserId === user.id &&
-      db.canUserEditCodeshare(activeCs, user.id)
-    ) {
-      try {
-        cs = db.updateCodeshare(activeCs.id, user.id, { title: rawShortId });
-        pubsub.publishCodeshareUpdated(cs.id);
-      } catch (_) {}
-    }
-  }
-
-  // 2) If `cs` already exists, but the URL slug entered in the address bar differs from `cs.slug`
-  //    (e.g. changing `/custom-title` back to `/originalId` or another slug for this room),
-  //    update `cs.title` and `cs.slug` so the room title reflects the URL change!
-  if (
-    cs &&
-    cs.slug &&
-    cs.slug.toLowerCase() !== shortId.toLowerCase() &&
-    db.canUserEditCodeshare(cs, user.id)
-  ) {
-    try {
-      cs = db.updateCodeshare(cs.id, user.id, { title: rawShortId });
-      pubsub.publishCodeshareUpdated(cs.id);
-    } catch (_) {}
-  }
-
   if (!cs) {
     cs = db.getOrCreateCodeshareByShortId(shortId, user);
   }

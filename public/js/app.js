@@ -626,21 +626,18 @@
       return slug || fallbackId;
     }
 
-    function syncBrowserUrlToSlug(slugValue) {
-      const targetSlug = slugValue || toUrlSlug(codeshare.title, codeshare.shortId);
-      if (!targetSlug) return;
-      codeshare.slug = targetSlug;
-      const newPath = '/' + encodeURIComponent(targetSlug);
-      if (window.location.pathname !== newPath && window.history && window.history.replaceState) {
-        window.history.replaceState(null, '', newPath + window.location.search + window.location.hash);
-      }
+    function syncBrowserUrlToSlug() {
+      const targetId = codeshare.shortId;
+      if (!targetId) return;
+      codeshare.slug = targetId;
+      const roomPath = '/' + encodeURIComponent(targetId);
       const slugPreview = document.getElementById('live-slug-preview');
       if (slugPreview && document.activeElement !== slugPreview) {
-        slugPreview.textContent = targetSlug;
+        slugPreview.textContent = targetId;
       }
       const shareInput = document.getElementById('share-url-input');
       if (shareInput && document.activeElement !== shareInput) {
-        shareInput.value = window.location.origin + newPath + window.location.hash;
+        shareInput.value = window.location.origin + roomPath + window.location.hash;
       }
     }
 
@@ -975,11 +972,14 @@
         finished = true;
         const rawVal = input.value.trim();
         if (save && rawVal) {
-          const sanitized = rawVal.replace(/[/\\:*?"<>|]/g, '-').slice(0, 64);
+          let sanitized = rawVal.replace(/[/\\:*?"<>|]/g, '-').slice(0, 64);
+          if (!sanitized.includes('.')) {
+            sanitized = `${sanitized}.txt`;
+          }
           const inferredMode =
             typeof Catalog.inferModeNameFromFilename === 'function'
-              ? Catalog.inferModeNameFromFilename(sanitized, file.modeName)
-              : file.modeName;
+              ? Catalog.inferModeNameFromFilename(sanitized, 'Plain Text')
+              : 'Plain Text';
           file.name = sanitized;
           file.modeName = inferredMode;
           if (file.id === 'main') {
@@ -1021,22 +1021,19 @@
     function createNewFileTab() {
       if (!isEditable()) return;
       const existingNames = new Set(roomFiles.map((f) => f.name.toLowerCase()));
-      const suggestions = ['styles.css', 'notes.md', 'index.html', 'utils.js', 'schema.json', 'queries.sql'];
-      let defaultName = suggestions.find((s) => !existingNames.has(s));
-      if (!defaultName) {
-        defaultName = `file-${roomFiles.length + 1}.js`;
+      let fileNum = roomFiles.length + 1;
+      let defaultName = `file-${fileNum}.txt`;
+      while (existingNames.has(defaultName.toLowerCase())) {
+        fileNum++;
+        defaultName = `file-${fileNum}.txt`;
       }
-      const modeName =
-        typeof Catalog.inferModeNameFromFilename === 'function'
-          ? Catalog.inferModeNameFromFilename(defaultName, codeshare.modeName || 'JavaScript')
-          : codeshare.modeName || 'JavaScript';
+      const modeName = 'Plain Text';
       const newTabId = `file-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      const initialContent = `// ${defaultName}\n`;
       const newFile = {
         id: newTabId,
         name: defaultName,
         modeName,
-        content: initialContent
+        content: ''
       };
       roomFiles.push(newFile);
       getOrCreateDocForFile(newFile);
@@ -1047,8 +1044,8 @@
         modeName: newFile.modeName,
         content: newFile.content
       });
-      switchToFileTab(newFile.id, { focusEditor: false });
-      startInlineTabRename(newFile.id, { isNewTab: true });
+      switchToFileTab(newFile.id, { focusEditor: true });
+      showToast(`Created ${newFile.name} (Plain Text)`, { duration: 2200 });
     }
 
     function deleteFileTab(tabId) {
@@ -1928,43 +1925,15 @@
       return cleaned;
     }
 
-    function applyUrlSlugToTitle(rawUrlOrSlug, shouldPersist = true) {
-      if (!isEditable()) return;
+    function navigateToUrlSlug(rawUrlOrSlug) {
       const extracted = extractSlugFromUrlInput(rawUrlOrSlug);
-      const nextTitle = extracted || codeshare.shortId;
-      const nextSlug = toUrlSlug(nextTitle, codeshare.shortId);
-      codeshare.title = nextTitle;
-      codeshare.slug = nextSlug;
-      if (titleInput && document.activeElement !== titleInput) {
-        titleInput.value = nextTitle;
-      }
-      const navTitle = document.getElementById('navbar-room-title');
-      if (navTitle) navTitle.textContent = nextTitle;
-      document.title = `${nextTitle} - CodeeFlow`;
-      syncBrowserUrlToSlug(nextSlug);
-      if (shouldPersist) {
-        throttledUpdateCodeshare({ title: nextTitle });
+      const nextSlug = toUrlSlug(extracted, '');
+      if (nextSlug && nextSlug !== codeshare.shortId) {
+        window.location.href = '/' + encodeURIComponent(nextSlug);
+      } else if (slugPreviewEl) {
+        slugPreviewEl.textContent = codeshare.shortId;
       }
     }
-
-    // If browser URL path was changed directly in the address bar, sync URL -> Title on load
-    const bootstrapSlug = codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId);
-    if (
-      initialPathSlug &&
-      initialPathSlug.toLowerCase() !== String(bootstrapSlug).toLowerCase() &&
-      isEditable()
-    ) {
-      applyUrlSlugToTitle(initialPathSlug, true);
-    }
-
-    window.addEventListener('popstate', () => {
-      const pathSlug = decodeURIComponent(
-        window.location.pathname.replace(/^\/+|\/+$/g, '')
-      ).trim();
-      if (pathSlug) {
-        applyUrlSlugToTitle(pathSlug, true);
-      }
-    });
 
     if (titleInput) {
       titleInput.addEventListener('input', (e) => {
@@ -1973,20 +1942,24 @@
         const navTitle = document.getElementById('navbar-room-title');
         if (navTitle) navTitle.textContent = val || codeshare.shortId;
         document.title = `${val || codeshare.shortId} - CodeeFlow`;
-        syncBrowserUrlToSlug(toUrlSlug(val, codeshare.shortId));
         throttledUpdateCodeshare({ title: val });
       });
     }
 
     if (slugPreviewEl) {
-      slugPreviewEl.addEventListener('input', () => {
-        applyUrlSlugToTitle(slugPreviewEl.textContent, true);
-      });
       slugPreviewEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
           slugPreviewEl.blur();
+          navigateToUrlSlug(slugPreviewEl.textContent);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          slugPreviewEl.textContent = codeshare.shortId;
+          slugPreviewEl.blur();
         }
+      });
+      slugPreviewEl.addEventListener('blur', () => {
+        navigateToUrlSlug(slugPreviewEl.textContent);
       });
     }
 
@@ -2302,8 +2275,11 @@
     }
 
     if (shareUrlInput) {
-      shareUrlInput.addEventListener('input', (e) => {
-        applyUrlSlugToTitle(e.target.value, true);
+      shareUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          navigateToUrlSlug(shareUrlInput.value);
+        }
       });
     }
 

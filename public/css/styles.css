@@ -409,6 +409,7 @@ a {
   gap: 8px;
   min-inline-size: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .topbar-right {
@@ -537,12 +538,21 @@ a {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
+  flex: 0 1 auto;
   min-inline-size: 0;
-  max-inline-size: clamp(90px, 28cqi, 260px);
+  max-inline-size: clamp(80px, 28vw, 260px);
+  overflow: hidden;
+}
+
+@supports (max-inline-size: 1cqi) {
+  .room-title-pill {
+    max-inline-size: clamp(80px, 28cqi, 260px);
+  }
 }
 
 #navbar-room-title {
-  overflow: clip;
+  min-inline-size: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -556,52 +566,144 @@ a {
   box-shadow: 0 0 8px var(--accent-emerald);
 }
 
-/* Size-aware Navbar responsiveness (modern-web-guidance: size-aware-styling) */
+/* Size-aware Navbar responsiveness (modern-web-guidance: responsive-design & fluid-scaling) */
 @container topbar (inline-size < 640px) {
   .topbar-workspace .brand-name {
     display: none;
   }
 
+  .topbar-workspace .presence-strip {
+    display: none;
+  }
+
+  .topbar-left {
+    gap: 5px;
+  }
+
+  .topbar-right {
+    gap: 5px;
+  }
+
+  .topbar-divider {
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .room-title-pill {
+    padding: 4px 10px;
+    gap: 6px;
+    font-size: 11.5px;
+    max-inline-size: clamp(72px, 34cqi, 200px);
+  }
+
   .btn-icon-responsive {
-    padding: 0 10px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .btn-icon-responsive .btn-label {
     display: none;
   }
 
-  .presence-strip .presence-avatar:not(:first-child) {
-    display: none;
+  #codeshare-share-button {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    gap: 5px;
   }
 }
 
 @media (max-width: 680px) {
   .topbar-workspace {
     margin: 8px 10px 0;
-    padding: 5px 8px 5px 12px;
+    padding: 5px 8px 5px 10px;
+    gap: 6px;
   }
 
   .topbar-workspace .brand-name {
     display: none;
   }
 
+  .topbar-workspace .presence-strip {
+    display: none;
+  }
+
+  .topbar-left {
+    gap: 5px;
+  }
+
+  .topbar-right {
+    gap: 5px;
+  }
+
+  .topbar-divider {
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8.5px;
+  }
+
+  .room-title-pill {
+    padding: 4px 10px;
+    gap: 6px;
+    font-size: 11.5px;
+    max-inline-size: clamp(72px, 32vw, 180px);
+  }
+
   .btn-icon-responsive {
-    padding: 0 10px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .btn-icon-responsive .btn-label {
     display: none;
   }
 
+  #codeshare-share-button {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
   .topbar-floating {
     top: 10px;
     inline-size: calc(100% - 20px);
     margin: 10px auto 0;
-    padding: 6px 8px 6px 14px;
+    padding: 6px 8px 6px 12px;
+    gap: 6px;
+  }
+
+  .topbar-floating .topbar-right .btn-pill {
+    height: 32px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+
+  .topbar-floating a[href="/settings"] {
+    max-inline-size: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .brand-name {
     font-size: 20px;
+  }
+}
+
+@media (max-width: 440px) {
+  .topbar-floating:has(a[href="/logout"]) .brand-name {
+    display: none;
   }
 }
 
@@ -1131,9 +1233,12 @@ a {
   padding: 0 22px !important;
 }
 
-.CodeMirror-placeholder {
+.CodeMirror-placeholder,
+.CodeMirror pre.CodeMirror-placeholder {
   color: var(--text-muted) !important;
   font-style: italic;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 /* Remote Collaborator Carets & Selection Flags */
@@ -1201,9 +1306,20 @@ a {
     border-radius: 18px;
   }
 
+  .CodeMirror {
+    font-size: 13px !important;
+    line-height: 1.62 !important;
+    padding: 10px 0;
+  }
+
+  .cm-s-eclipse .CodeMirror-linenumber,
+  .cm-s-neat .CodeMirror-linenumber {
+    padding: 0 9px 0 6px !important;
+  }
+
   .CodeMirror pre.CodeMirror-line,
   .CodeMirror pre.CodeMirror-line-like {
-    padding: 0 12px !important;
+    padding: 0 14px !important;
   }
 
   .editor-status-pill {

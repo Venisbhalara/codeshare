@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.18" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.19" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.18" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.19" />
 </head>`;
 }
 
@@ -88,7 +88,6 @@ function renderNavbar({ me, codeshare = null }) {
       }
     </div>
     <div class="topbar-right">
-      ${codeshare ? `<div id="presence-strip" class="presence-strip"></div>` : ''}
       <button type="button" id="theme-toggle-button" data-theme-toggle class="btn btn-glass btn-icon-responsive theme-switch-btn" title="Toggle Dark / Light Theme">
         <span class="theme-switch-option if-light">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -233,9 +232,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.18"></script>
-  <script src="/shared/ot.js?v=v3.40.18"></script>
-  <script src="/shared/catalog.js?v=v3.40.18"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.19"></script>
+  <script src="/shared/ot.js?v=v3.40.19"></script>
+  <script src="/shared/catalog.js?v=v3.40.19"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -243,7 +242,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.18"></script>
+  <script src="/-/js/app.js?v=v3.40.19"></script>
 </body>
 </html>`;
 }

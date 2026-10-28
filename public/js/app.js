@@ -1586,27 +1586,6 @@
 
         remoteCursorWidgets.set(nodeId, { bookmark, selectionMarker });
       }
-
-      // Render topbar presence strip
-      const strip = document.getElementById('presence-strip');
-      if (strip) {
-        strip.innerHTML = '';
-        for (const uNode of activeRoomUsers.values()) {
-          const pill = document.createElement('div');
-          pill.className = 'presence-avatar';
-          const isMe = uNode.createdBy && uNode.createdBy.me;
-          const customName = uNode.createdBy && uNode.createdBy.name;
-          const displayName = customName
-            ? isMe
-              ? `${customName} (you)`
-              : customName
-            : isMe
-            ? 'You'
-            : `Guest ${String(uNode.id).slice(-3)}`;
-          pill.innerHTML = `<span class="presence-swatch" style="background:${uNode.color}"></span><span>${displayName}</span>`;
-          strip.appendChild(pill);
-        }
-      }
     }
 
     // Populate initial room users

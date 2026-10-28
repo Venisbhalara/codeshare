@@ -175,6 +175,14 @@ async function runVerification() {
     assert(homeRes.body.includes('Codee<span class="brand-name-accent">Flow</span>'));
     assert(homeRes.body.includes('class="brand-logo-svg"'));
     assert(homeRes.body.includes('codeeflow.io /'));
+    assert(homeRes.body.includes('<body class="home-page">'));
+    assert(homeRes.body.includes('class="home-cross-grill"'));
+    assert(homeRes.body.includes('id="codeeflow-cross-grill"'));
+
+    const cssRes = await httpRequest(port, { path: '/-/css/styles.css', method: 'GET' });
+    assert.strictEqual(cssRes.status, 200);
+    assert(cssRes.body.includes('--grill-major'));
+    assert(cssRes.body.includes('body.home-page > .home-cross-grill'));
 
     const logoRes = await httpRequest(port, { path: '/shared/logo.svg', method: 'GET' });
     assert.strictEqual(logoRes.status, 200);
@@ -185,11 +193,15 @@ async function runVerification() {
     assert(!loginRes.body.includes('demo@codeflow.io'));
     assert(!loginRes.body.includes('Password123!'));
     assert(loginRes.body.includes('autocomplete="current-password"'));
+    assert(!loginRes.body.includes('home-page'));
+    assert(!loginRes.body.includes('home-cross-grill'));
 
     const registerRes = await httpRequest(port, { path: '/register', method: 'GET' });
     assert.strictEqual(registerRes.status, 200);
     assert(!registerRes.body.includes('Grace Hopper'));
     assert(registerRes.body.includes('autocomplete="new-password"'));
+    assert(!registerRes.body.includes('home-page'));
+    assert(!registerRes.body.includes('home-cross-grill'));
 
     const joinRes = await httpRequest(port, {
       path: `/join?room=${encodeURIComponent(`http://localhost:3000/${shortId}`)}`,
@@ -235,6 +247,8 @@ async function runVerification() {
     assert.strictEqual(slugRoomRes.status, 200);
     assert(slugRoomRes.body.includes(customTitle));
     assert(slugRoomRes.body.includes(`"shortId":"${shortId}"`));
+    assert(!slugRoomRes.body.includes('home-page'));
+    assert(!slugRoomRes.body.includes('home-cross-grill'));
 
     // Verify URL -> Title Sync (changing URL in browser address bar updates room Title)
     const urlDrivenSlug = `Url-Driven-Title-${shortId}`;

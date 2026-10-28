@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.14" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.15" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.14" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.15" />
 </head>`;
 }
 
@@ -228,9 +228,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.14"></script>
-  <script src="/shared/ot.js?v=v3.40.14"></script>
-  <script src="/shared/catalog.js?v=v3.40.14"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.15"></script>
+  <script src="/shared/ot.js?v=v3.40.15"></script>
+  <script src="/shared/catalog.js?v=v3.40.15"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -238,7 +238,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.14"></script>
+  <script src="/-/js/app.js?v=v3.40.15"></script>
 </body>
 </html>`;
 }
@@ -320,7 +320,24 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
   };
 
   return `${renderHead({ title: 'CodeeFlow — Share code in real-time with developers in your browser' })}
-<body>
+<body class="home-page">
+  <div class="home-cross-grill" aria-hidden="true">
+    <svg class="home-cross-grill-svg" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="codeeflow-minor-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M 16 0 L 0 0 0 16" fill="none" stroke="var(--grill-minor)" stroke-width="1" />
+        </pattern>
+        <pattern id="codeeflow-cross-grill" width="64" height="64" patternUnits="userSpaceOnUse">
+          <rect width="64" height="64" fill="url(#codeeflow-minor-grid)" />
+          <path d="M 0 0 L 64 64 M 64 0 L 0 64" fill="none" stroke="var(--grill-diagonal)" stroke-width="1" />
+          <path d="M 64 0 L 0 0 0 64" fill="none" stroke="var(--grill-major)" stroke-width="1.15" />
+          <path d="M 0 5.5 L 0 0 L 5.5 0 M 58.5 0 L 64 0 L 64 5.5 M 0 58.5 L 0 64 L 5.5 64 M 58.5 64 L 64 64 L 64 58.5" fill="none" stroke="var(--grill-node)" stroke-width="1.65" stroke-linecap="square" />
+          <path d="M 27.5 32 L 36.5 32 M 32 27.5 L 32 36.5" fill="none" stroke="var(--grill-center-node)" stroke-width="1.35" stroke-linecap="round" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#codeeflow-cross-grill)" />
+    </svg>
+  </div>
   ${renderNavbar({ me })}
   <main class="page-container">
     <section class="hero-section">

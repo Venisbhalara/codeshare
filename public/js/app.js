@@ -795,6 +795,7 @@
     // =======================================================================
     const mainDoc = cm.getDoc();
     let activeTabId = 'main';
+    let activeRenamingState = null; // { tabId, inputEl, commitRename }
     const tabDocs = new Map([['main', mainDoc]]);
     let roomFiles =
       Array.isArray(codeshare.files) && codeshare.files.length > 0
@@ -807,7 +808,11 @@
                   ? Catalog.defaultFilenameForMode(codeshare.modeName)
                   : 'index.js',
               modeName: codeshare.modeName || 'Plain Text',
-              content: ''
+              content: '',
+              canRename: Boolean(codeshare.createdBy && codeshare.createdBy.me),
+              ownerToken: null,
+              renameRev: 0,
+              createdBy: { me: Boolean(codeshare.createdBy && codeshare.createdBy.me) }
             }
           ];
 
@@ -817,6 +822,27 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function canUserRenameFile(file) {
+      if (!file || !isEditable()) return false;
+      if (typeof file.canRename === 'boolean') return file.canRename;
+      if (file.createdBy && typeof file.createdBy.me === 'boolean') return file.createdBy.me;
+      return Boolean(codeshare.createdBy && codeshare.createdBy.me);
+    }
+
+    function sanitizeTabFilename(rawVal, fallbackExt = 'txt') {
+      let cleaned = String(rawVal || '')
+        .trim()
+        .replace(/[/\\:*?"<>|\r\n\t]+/g, '-')
+        .slice(0, 48);
+      if (!cleaned) return '';
+      if (!cleaned.includes('.')) {
+        cleaned = `${cleaned}.${fallbackExt || 'txt'}`;
+      } else if (cleaned.endsWith('.')) {
+        cleaned = `${cleaned}${fallbackExt || 'txt'}`;
+      }
+      return cleaned;
     }
 
     function getActiveFile() {
@@ -846,7 +872,7 @@
             updateCodeshare(input: $input) {
               codeshare {
                 id slug title modeName tabSize canEdit { me userIds }
-                files { id name modeName content updatedAt lastClientId }
+                files { id name modeName content updatedAt lastClientId canRename ownerToken renameRev createdBy { me userId } }
               }
             }
           }`,
@@ -856,6 +882,26 @@
               fileAction: Object.assign({ clientId }, fileAction)
             }
           }
+        })
+        .then((res) => {
+          const updatedFiles =
+            res &&
+            res.updateCodeshare &&
+            res.updateCodeshare.codeshare &&
+            res.updateCodeshare.codeshare.files;
+          if (Array.isArray(updatedFiles)) {
+            updatedFiles.forEach((uf) => {
+              const localFile = roomFiles.find((f) => f.id === uf.id);
+              if (localFile) {
+                if (typeof uf.canRename === 'boolean') localFile.canRename = uf.canRename;
+                if (uf.ownerToken) localFile.ownerToken = uf.ownerToken;
+                if (typeof uf.renameRev === 'number') {
+                  localFile.renameRev = Math.max(Number(localFile.renameRev) || 0, uf.renameRev);
+                }
+              }
+            });
+          }
+          return res;
         })
         .catch(() => {});
     }
@@ -868,6 +914,20 @@
       });
     }, 280);
 
+    const throttledSendLiveFileRename = createTrailingThrottle(
+      (tabId, name, modeName, ownerToken, renameRev) => {
+        sendFileAction({
+          type: 'rename',
+          id: tabId,
+          name,
+          modeName,
+          ownerToken: ownerToken || null,
+          renameRev
+        });
+      },
+      160
+    );
+
     function renderFileTabs() {
       const listEl = document.getElementById('editor-tabs-list');
       const addBtn = document.getElementById('add-file-tab-btn');
@@ -877,28 +937,50 @@
       }
       if (!listEl) return;
 
+      // Preserve active inline rename input if the creator is currently typing a new filename
+      if (
+        activeRenamingState &&
+        activeRenamingState.inputEl &&
+        listEl.contains(activeRenamingState.inputEl)
+      ) {
+        return;
+      }
+
       listEl.innerHTML = roomFiles
         .map((file) => {
           const isActive = file.id === activeTabId;
           const isMain = file.id === 'main';
+          const canRename = canUserRenameFile(file);
           const ext = file.name.includes('.')
             ? file.name.split('.').pop().toLowerCase()
             : 'txt';
+          const tabTooltip = canRename
+            ? `${file.name} (${file.modeName || 'Plain Text'}) — Click pencil or double-click to rename`
+            : `${file.name} (${file.modeName || 'Plain Text'}) — Only the file creator can rename this file`;
           return `<li class="editor-tab-item ${isActive ? 'active' : ''}" role="tab" aria-selected="${
             isActive ? 'true' : 'false'
           }" data-tab-id="${escapeTabText(file.id)}" data-tab-name="${escapeTabText(
             file.name
-          )}" data-tab-mode="${escapeTabText(file.modeName || 'Plain Text')}">
+          )}" data-tab-mode="${escapeTabText(file.modeName || 'Plain Text')}" data-can-rename="${
+            canRename ? 'true' : 'false'
+          }">
             <button type="button" class="editor-tab-btn" data-select-tab="${escapeTabText(
               file.id
-            )}" title="${escapeTabText(file.name)} (${escapeTabText(
-            file.modeName || 'Plain Text'
-          )}) — Double-click to rename">
+            )}" title="${escapeTabText(tabTooltip)}">
               <span class="file-ext-dot" data-ext="${escapeTabText(ext)}"></span>
               <span class="editor-tab-name">${escapeTabText(file.name)}</span>
             </button>
             ${
-              !isMain && editable
+              canRename
+                ? `<button type="button" class="editor-tab-rename" data-rename-tab="${escapeTabText(
+                    file.id
+                  )}" title="Rename ${escapeTabText(file.name)}" aria-label="Rename ${escapeTabText(
+                    file.name
+                  )}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>`
+                : `<span class="editor-tab-lock-badge" title="Only the user who created this file can rename it" aria-label="Locked to creator"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>`
+            }
+            ${
+              !isMain && editable && canRename
                 ? `<button type="button" class="editor-tab-close" data-close-tab="${escapeTabText(
                     file.id
                   )}" title="Delete ${escapeTabText(file.name)}" aria-label="Delete ${escapeTabText(
@@ -914,6 +996,9 @@
     function switchToFileTab(tabId, { focusEditor = true } = {}) {
       const targetFile = roomFiles.find((f) => f.id === tabId) || roomFiles[0];
       if (!targetFile) return;
+      if (activeRenamingState && activeRenamingState.tabId !== targetFile.id) {
+        activeRenamingState.commitRename(true);
+      }
       activeTabId = targetFile.id;
       const targetDoc = getOrCreateDocForFile(targetFile);
 
@@ -944,6 +1029,14 @@
       if (!isEditable()) return;
       const file = roomFiles.find((f) => f.id === tabId);
       if (!file) return;
+      if (!canUserRenameFile(file)) {
+        showToast('Only the user who created this file can rename it.', { duration: 2400 });
+        return;
+      }
+      if (activeRenamingState) {
+        if (activeRenamingState.tabId === tabId) return;
+        activeRenamingState.commitRename(true);
+      }
       const listEl = document.getElementById('editor-tabs-list');
       if (!listEl) return;
       const tabItem = listEl.querySelector(`[data-tab-id="${CSS.escape(tabId)}"]`);
@@ -951,11 +1044,19 @@
       const nameSpan = tabItem.querySelector('.editor-tab-name');
       if (!nameSpan) return;
 
+      const initialName = file.name;
+      const initialMode = file.modeName || 'Plain Text';
+      const initialExt = initialName.includes('.')
+        ? initialName.split('.').pop().toLowerCase()
+        : 'txt';
+
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'editor-tab-rename-input';
       input.value = file.name;
       input.setAttribute('aria-label', 'File name');
+      input.setAttribute('spellcheck', 'false');
+      input.setAttribute('autocomplete', 'off');
       nameSpan.replaceWith(input);
       input.focus();
 
@@ -967,48 +1068,116 @@
       }
 
       let finished = false;
-      function commitRename(save) {
-        if (finished) return;
-        finished = true;
-        const rawVal = input.value.trim();
-        if (save && rawVal) {
-          let sanitized = rawVal.replace(/[/\\:*?"<>|]/g, '-').slice(0, 64);
-          if (!sanitized.includes('.')) {
-            sanitized = `${sanitized}.txt`;
+      function applyRenameValue(nextSanitizedName, broadcastImmediately = false) {
+        const lowerTaken = new Set(
+          roomFiles
+            .filter((f) => f.id !== file.id)
+            .map((f) => String(f.name || '').toLowerCase())
+        );
+        let resolvedName = nextSanitizedName;
+        if (lowerTaken.has(resolvedName.toLowerCase())) {
+          const dot = resolvedName.lastIndexOf('.');
+          const stem = dot > 0 ? resolvedName.slice(0, dot) : resolvedName;
+          const ext = dot > 0 ? resolvedName.slice(dot) : `.${initialExt}`;
+          let suffix = 2;
+          while (lowerTaken.has(`${stem}-${suffix}${ext}`.toLowerCase())) {
+            suffix++;
           }
-          const inferredMode =
-            typeof Catalog.inferModeNameFromFilename === 'function'
-              ? Catalog.inferModeNameFromFilename(sanitized, 'Plain Text')
-              : 'Plain Text';
-          file.name = sanitized;
-          file.modeName = inferredMode;
-          if (file.id === 'main') {
-            codeshare.modeName = inferredMode;
-          }
-          if (activeTabId === file.id) {
-            const modeSelectEl = document.getElementById('codeshare-mode-select');
-            if (modeSelectEl) modeSelectEl.value = inferredMode;
-            applyLanguageMode(inferredMode);
-          }
+          resolvedName = `${stem}-${suffix}${ext}`;
+        }
+        const inferredMode =
+          typeof Catalog.inferModeNameFromFilename === 'function'
+            ? Catalog.inferModeNameFromFilename(resolvedName, 'Plain Text')
+            : 'Plain Text';
+        file.name = resolvedName;
+        file.modeName = inferredMode;
+        file.renameRev = (Number(file.renameRev) || 0) + 1;
+        if (file.id === 'main') {
+          codeshare.modeName = inferredMode;
+        }
+        const extDot = tabItem.querySelector('.file-ext-dot');
+        if (extDot) {
+          const liveExt = resolvedName.includes('.')
+            ? resolvedName.split('.').pop().toLowerCase()
+            : 'txt';
+          extDot.setAttribute('data-ext', liveExt);
+        }
+        if (activeTabId === file.id) {
+          const modeSelectEl = document.getElementById('codeshare-mode-select');
+          if (modeSelectEl) modeSelectEl.value = inferredMode;
+          applyLanguageMode(inferredMode);
+        }
+        if (broadcastImmediately) {
           sendFileAction({
             type: 'rename',
             id: file.id,
             name: file.name,
-            modeName: file.modeName
+            modeName: file.modeName,
+            ownerToken: file.ownerToken || null,
+            renameRev: file.renameRev
           });
-          if (isNewTab) {
-            showToast(`Created ${file.name} (${file.modeName})`, { duration: 2200 });
+        } else {
+          throttledSendLiveFileRename(
+            file.id,
+            file.name,
+            file.modeName,
+            file.ownerToken || null,
+            file.renameRev
+          );
+        }
+      }
+
+      function commitRename(save) {
+        if (finished) return;
+        finished = true;
+        activeRenamingState = null;
+
+        if (save) {
+          const sanitized = sanitizeTabFilename(input.value, initialExt);
+          if (sanitized) {
+            applyRenameValue(sanitized, true);
+            if (isNewTab) {
+              showToast(`Created ${file.name} (${file.modeName})`, { duration: 2200 });
+            } else if (file.name !== initialName) {
+              showToast(`Renamed to ${file.name} (${file.modeName})`, { duration: 2200 });
+            }
           } else {
-            showToast(`Renamed to ${file.name} (${file.modeName})`, { duration: 2200 });
+            applyRenameValue(initialName, true);
+          }
+        } else {
+          // Revert to initialName on Escape
+          if (file.name !== initialName || file.modeName !== initialMode) {
+            applyRenameValue(initialName, true);
           }
         }
         renderFileTabs();
         cm.focus();
       }
 
+      activeRenamingState = {
+        tabId: file.id,
+        inputEl: input,
+        commitRename
+      };
+
+      input.addEventListener('click', (e) => e.stopPropagation());
+      input.addEventListener('dblclick', (e) => e.stopPropagation());
+
+      // Real-time live rename sync while the file creator types
+      input.addEventListener('input', () => {
+        const liveSanitized = sanitizeTabFilename(input.value, initialExt);
+        if (liveSanitized) {
+          applyRenameValue(liveSanitized, false);
+        }
+      });
+
+      // IME-safe Enter-to-submit (modern-web-guidance: ime-safe-enter-submit)
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
+          if (e.isComposing || e.keyCode === 229) {
+            return;
+          }
           commitRename(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
@@ -1020,6 +1189,9 @@
 
     function createNewFileTab() {
       if (!isEditable()) return;
+      if (activeRenamingState) {
+        activeRenamingState.commitRename(true);
+      }
       const existingNames = new Set(roomFiles.map((f) => f.name.toLowerCase()));
       let fileNum = roomFiles.length + 1;
       let defaultName = `file-${fileNum}.txt`;
@@ -1033,7 +1205,11 @@
         id: newTabId,
         name: defaultName,
         modeName,
-        content: ''
+        content: '',
+        canRename: true,
+        ownerToken: null,
+        renameRev: 0,
+        createdBy: { me: true }
       };
       roomFiles.push(newFile);
       getOrCreateDocForFile(newFile);
@@ -1044,14 +1220,22 @@
         modeName: newFile.modeName,
         content: newFile.content
       });
-      switchToFileTab(newFile.id, { focusEditor: true });
-      showToast(`Created ${newFile.name} (Plain Text)`, { duration: 2200 });
+      switchToFileTab(newFile.id, { focusEditor: false });
+      startInlineTabRename(newFile.id, { isNewTab: true });
     }
 
     function deleteFileTab(tabId) {
       if (!isEditable() || tabId === 'main') return;
       const idx = roomFiles.findIndex((f) => f.id === tabId);
       if (idx === -1) return;
+      const targetFile = roomFiles[idx];
+      if (!canUserRenameFile(targetFile)) {
+        showToast('Only the user who created this file can delete it.', { duration: 2200 });
+        return;
+      }
+      if (activeRenamingState && activeRenamingState.tabId === tabId) {
+        activeRenamingState = null;
+      }
       const removed = roomFiles[idx];
       roomFiles.splice(idx, 1);
       tabDocs.delete(tabId);
@@ -1075,6 +1259,18 @@
         if (closeBtn) {
           e.stopPropagation();
           deleteFileTab(closeBtn.getAttribute('data-close-tab'));
+          return;
+        }
+        const renameBtn = e.target.closest('[data-rename-tab]');
+        if (renameBtn) {
+          e.stopPropagation();
+          const renameTabId = renameBtn.getAttribute('data-rename-tab');
+          if (renameTabId) {
+            if (renameTabId !== activeTabId) {
+              switchToFileTab(renameTabId, { focusEditor: false });
+            }
+            startInlineTabRename(renameTabId);
+          }
           return;
         }
         const selectBtn = e.target.closest('[data-select-tab]');
@@ -1654,7 +1850,7 @@
         codeshareUpdates(input: $input) {
           codeshare {
             id slug title modeName tabSize migratedAt canEdit { me userIds }
-            files { id name modeName content updatedAt lastClientId }
+            files { id name modeName content updatedAt lastClientId canRename ownerToken renameRev createdBy { me userId } }
           }
         }
       }`,
@@ -1693,7 +1889,7 @@
           query: `query CodeshareIdCodeshareReconnectQuery($codeshareId: String!, $codeHistoryAfter: String, $codeHistoryFirst: Int!) {
             codeshare(id: $codeshareId) {
               id slug title modeName tabSize migratedAt canEdit { me userIds }
-              files { id name modeName content updatedAt lastClientId }
+              files { id name modeName content updatedAt lastClientId canRename ownerToken renameRev createdBy { me userId } }
               codeHistory(after: $codeHistoryAfter, first: $codeHistoryFirst) { edges { node { id historyId value createdAt createdBy { me userId clientId } } cursor } }
             }
           }`,
@@ -1727,6 +1923,7 @@
 
       // Sync Multi-Tab / Multi-File Rooms
       if (Array.isArray(updated.files) && updated.files.length > 0) {
+        const prevMap = new Map(roomFiles.map((f) => [f.id, f]));
         const incomingIds = new Set(updated.files.map((f) => f.id));
         for (const key of Array.from(tabDocs.keys())) {
           if (key !== 'main' && !incomingIds.has(key)) {
@@ -1734,7 +1931,22 @@
           }
         }
         roomFiles = updated.files.map((rf) => {
-          const clone = Object.assign({}, rf);
+          const prev = prevMap.get(rf.id);
+          const clone = Object.assign({}, prev || {}, rf);
+          if (activeRenamingState && activeRenamingState.tabId === clone.id && prev) {
+            clone.name = prev.name;
+            clone.modeName = prev.modeName;
+            clone.renameRev = Math.max(Number(prev.renameRev) || 0, Number(rf.renameRev) || 0);
+          } else if (
+            prev &&
+            typeof prev.renameRev === 'number' &&
+            typeof rf.renameRev === 'number' &&
+            rf.renameRev < prev.renameRev
+          ) {
+            clone.name = prev.name;
+            clone.modeName = prev.modeName;
+            clone.renameRev = prev.renameRev;
+          }
           if (clone.id !== 'main') {
             const doc = getOrCreateDocForFile(clone);
             if (
@@ -1815,7 +2027,7 @@
             updateCodeshare(input: $input) {
               codeshare {
                 id slug title modeName tabSize canEdit { me userIds }
-                files { id name modeName content updatedAt lastClientId }
+                files { id name modeName content updatedAt lastClientId canRename ownerToken renameRev createdBy { me userId } }
               }
             }
           }`,
@@ -1888,6 +2100,9 @@
       slugPreviewEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
+          if (e.isComposing || e.keyCode === 229) {
+            return;
+          }
           slugPreviewEl.blur();
           navigateToUrlSlug(slugPreviewEl.textContent);
         } else if (e.key === 'Escape') {
@@ -1908,19 +2123,26 @@
         const activeFile = getActiveFile();
         if (activeFile) {
           activeFile.modeName = modeName;
-          const modeEntry = Catalog.MODES_BY_NAME[modeName];
-          if (modeEntry && modeEntry.ext && modeEntry.ext.length > 0 && activeFile.name) {
-            const dotIdx = activeFile.name.lastIndexOf('.');
-            const baseStem = dotIdx > 0 ? activeFile.name.slice(0, dotIdx) : activeFile.name;
-            activeFile.name = `${baseStem}.${modeEntry.ext[0]}`;
+          if (canUserRenameFile(activeFile)) {
+            const modeEntry = Catalog.MODES_BY_NAME[modeName];
+            if (modeEntry && modeEntry.ext && modeEntry.ext.length > 0 && activeFile.name) {
+              const dotIdx = activeFile.name.lastIndexOf('.');
+              const baseStem = dotIdx > 0 ? activeFile.name.slice(0, dotIdx) : activeFile.name;
+              activeFile.name = `${baseStem}.${modeEntry.ext[0]}`;
+            }
+            activeFile.renameRev = (Number(activeFile.renameRev) || 0) + 1;
+            renderFileTabs();
+            sendFileAction({
+              type: 'rename',
+              id: activeFile.id,
+              name: activeFile.name,
+              modeName,
+              ownerToken: activeFile.ownerToken || null,
+              renameRev: activeFile.renameRev
+            });
+          } else {
+            renderFileTabs();
           }
-          renderFileTabs();
-          sendFileAction({
-            type: 'rename',
-            id: activeFile.id,
-            name: activeFile.name,
-            modeName
-          });
         }
         if (activeTabId === 'main') {
           codeshare.modeName = modeName;

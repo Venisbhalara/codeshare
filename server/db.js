@@ -28,6 +28,8 @@ const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000; // 900,000 ms (9e5)
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_SAVED_LIMIT = 20;
+const FILE_OWNER_SECRET =
+  process.env.FILE_OWNER_SECRET || 'codeeflow-file-owner-hmac-v1-secret-9f4e2a8c';
 
 function randomShortId(len = 6) {
   const bytes = crypto.randomBytes(len);
@@ -291,9 +293,51 @@ class Database {
     this.saveSync();
   }
 
+  computeFileOwnerSignature(shortId, fileId, rawUserId) {
+    return crypto
+      .createHmac('sha256', FILE_OWNER_SECRET)
+      .update(`${String(shortId || '')}:${String(fileId || '')}:${String(rawUserId || '')}`)
+      .digest('hex')
+      .slice(0, 24);
+  }
+
+  canUserRenameFile(codeshare, file, rawUserId, providedOwnerToken) {
+    if (!codeshare || !file || !rawUserId) return false;
+    if (!this.canUserEditCodeshare(codeshare, rawUserId)) return false;
+    const creatorId = file.createdByUserId || codeshare.createdByUserId;
+    if (!creatorId || creatorId !== rawUserId) return false;
+
+    const expectedSig = this.computeFileOwnerSignature(codeshare.id, file.id, creatorId);
+    const storedSig =
+      file.ownerSignature || this.computeFileOwnerSignature(codeshare.id, file.id, creatorId);
+    try {
+      const expectedBuf = Buffer.from(expectedSig, 'utf8');
+      const storedBuf = Buffer.from(storedSig, 'utf8');
+      if (
+        expectedBuf.length !== storedBuf.length ||
+        !crypto.timingSafeEqual(expectedBuf, storedBuf)
+      ) {
+        return false;
+      }
+      if (typeof providedOwnerToken === 'string' && providedOwnerToken.length > 0) {
+        const tokenBuf = Buffer.from(providedOwnerToken, 'utf8');
+        if (
+          tokenBuf.length !== expectedBuf.length ||
+          !crypto.timingSafeEqual(tokenBuf, expectedBuf)
+        ) {
+          return false;
+        }
+      }
+    } catch (_) {
+      return false;
+    }
+    return true;
+  }
+
   ensureCodeshareFiles(cs) {
     if (!cs) return [];
     const now = cs.updatedAt || cs.createdAt || new Date().toISOString();
+    const defaultCreatorId = cs.createdByUserId || 'anon:system';
     if (cs.id === 'G8WoB4' && (!Array.isArray(cs.files) || cs.files.length < 2)) {
       cs.files = [
         {
@@ -301,6 +345,8 @@ class Database {
           name: 'collaborate.js',
           modeName: cs.modeName || 'JavaScript',
           content: '',
+          createdByUserId: defaultCreatorId,
+          renameRev: 0,
           updatedAt: now
         },
         {
@@ -316,6 +362,8 @@ class Database {
             '}',
             ''
           ].join('\n'),
+          createdByUserId: defaultCreatorId,
+          renameRev: 0,
           updatedAt: now
         },
         {
@@ -330,12 +378,12 @@ class Database {
             '- Click **+ New File** to add more files to this room',
             ''
           ].join('\n'),
+          createdByUserId: defaultCreatorId,
+          renameRev: 0,
           updatedAt: now
         }
       ];
-      return cs.files;
-    }
-    if (!Array.isArray(cs.files) || cs.files.length === 0) {
+    } else if (!Array.isArray(cs.files) || cs.files.length === 0) {
       const defMode = cs.modeName || DEFAULT_MODE_NAME;
       cs.files = [
         {
@@ -343,6 +391,8 @@ class Database {
           name: defaultFilenameForMode(defMode),
           modeName: defMode,
           content: '',
+          createdByUserId: defaultCreatorId,
+          renameRev: 0,
           updatedAt: now
         }
       ];
@@ -353,9 +403,22 @@ class Database {
         name: defaultFilenameForMode(defMode),
         modeName: defMode,
         content: '',
+        createdByUserId: defaultCreatorId,
+        renameRev: 0,
         updatedAt: now
       });
     }
+
+    cs.files.forEach((f) => {
+      if (!f) return;
+      if (!f.createdByUserId) {
+        f.createdByUserId = defaultCreatorId;
+      }
+      if (typeof f.renameRev !== 'number' || isNaN(f.renameRev)) {
+        f.renameRev = 0;
+      }
+      f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, f.createdByUserId);
+    });
     return cs.files;
   }
 
@@ -524,6 +587,14 @@ class Database {
         }
         if (cs.modifiedByUserId === currentAnonUser.id) {
           cs.modifiedByUserId = newId;
+        }
+        if (Array.isArray(cs.files)) {
+          cs.files.forEach((f) => {
+            if (f && f.createdByUserId === currentAnonUser.id) {
+              f.createdByUserId = newId;
+              f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, newId);
+            }
+          });
         }
       });
     }
@@ -810,9 +881,18 @@ class Database {
 
     // Claiming/saving an anonymous codeshare on login/register
     if (input.save === true) {
-      const creator = this.getUserByRawId(cs.createdByUserId);
+      const oldCreatorId = cs.createdByUserId;
+      const creator = this.getUserByRawId(oldCreatorId);
       if (!creator || creator.anonymous) {
         cs.createdByUserId = rawUserId;
+        if (Array.isArray(cs.files)) {
+          cs.files.forEach((f) => {
+            if (f && (!f.createdByUserId || f.createdByUserId === oldCreatorId)) {
+              f.createdByUserId = rawUserId;
+              f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, rawUserId);
+            }
+          });
+        }
       }
       cs.saved = true;
     }
@@ -857,7 +937,10 @@ class Database {
               ? action.id
               : `file-${randomShortId(6)}`;
           if (!cs.files.some((f) => f.id === newId)) {
-            const name = sanitizeFilename(action.name, `file-${cs.files.length + 1}.txt`);
+            let name = sanitizeFilename(action.name, `file-${cs.files.length + 1}.txt`);
+            if (!name.includes('.')) {
+              name = `${name}.txt`;
+            }
             const modeName = inferModeNameFromFilename(
               name,
               action.modeName || DEFAULT_MODE_NAME
@@ -867,6 +950,9 @@ class Database {
               name,
               modeName,
               content: String(action.content || ''),
+              createdByUserId: rawUserId,
+              renameRev: 0,
+              ownerSignature: this.computeFileOwnerSignature(cs.id, newId, rawUserId),
               updatedAt: nowIso,
               lastClientId: action.clientId || null
             });
@@ -874,9 +960,50 @@ class Database {
         }
       } else if (action.type === 'rename' && action.id) {
         const target = cs.files.find((f) => f.id === action.id);
-        if (target) {
-          target.name = sanitizeFilename(action.name, target.name);
-          target.modeName = inferModeNameFromFilename(target.name, target.modeName);
+        if (!target) {
+          const err = new Error('File not found.');
+          err.code = 'FILE_NOT_FOUND';
+          err.status = 404;
+          throw err;
+        }
+        // Strict creator-only rename check enforced via ownership & HMAC signature algorithm
+        if (!this.canUserRenameFile(cs, target, rawUserId, action.ownerToken)) {
+          const err = new Error('Only the user who created this file can rename it.');
+          err.code = 'FILE_RENAME_FORBIDDEN';
+          err.status = 403;
+          throw err;
+        }
+        const currentRev = Number(target.renameRev) || 0;
+        const incomingRev =
+          typeof action.renameRev === 'number' && !isNaN(action.renameRev)
+            ? action.renameRev
+            : currentRev + 1;
+        if (incomingRev >= currentRev) {
+          let nextName = sanitizeFilename(action.name, target.name);
+          if (!nextName.includes('.')) {
+            nextName = `${nextName}.txt`;
+          }
+          const lowerTaken = new Set(
+            cs.files
+              .filter((f) => f.id !== target.id)
+              .map((f) => String(f.name || '').toLowerCase())
+          );
+          if (lowerTaken.has(nextName.toLowerCase())) {
+            const dot = nextName.lastIndexOf('.');
+            const stem = dot > 0 ? nextName.slice(0, dot) : nextName;
+            const ext = dot > 0 ? nextName.slice(dot) : '.txt';
+            let suffix = 2;
+            while (lowerTaken.has(`${stem}-${suffix}${ext}`.toLowerCase())) {
+              suffix++;
+            }
+            nextName = `${stem}-${suffix}${ext}`;
+          }
+          target.name = nextName;
+          target.modeName =
+            typeof action.modeName === 'string' && action.modeName.trim()
+              ? inferModeNameFromFilename(target.name, action.modeName.trim())
+              : inferModeNameFromFilename(target.name, target.modeName);
+          target.renameRev = Math.max(currentRev + 1, incomingRev);
           target.updatedAt = nowIso;
           target.lastClientId = action.clientId || null;
           if (target.id === 'main') {
@@ -887,9 +1014,10 @@ class Database {
         const target = cs.files.find((f) => f.id === action.id);
         if (target && target.id !== 'main') {
           target.content = String(action.content ?? '');
-          if (action.name) {
+          if (action.name && this.canUserRenameFile(cs, target, rawUserId, action.ownerToken)) {
             target.name = sanitizeFilename(action.name, target.name);
             target.modeName = inferModeNameFromFilename(target.name, target.modeName);
+            target.renameRev = (Number(target.renameRev) || 0) + 1;
           }
           target.updatedAt = nowIso;
           target.lastClientId = action.clientId || null;

@@ -272,7 +272,7 @@ async function runVerification() {
 
     const createTabBody = JSON.stringify({
       operationName: 'updateCodeshareFileActionMutation',
-      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content } } } }',
+      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content canRename ownerToken renameRev createdBy { me } } } } }',
       variables: {
         input: {
           id: encodeRelayId('Codeshare', shortId),
@@ -304,10 +304,12 @@ async function runVerification() {
     assert.strictEqual(createdFiles[1].name, 'file-2.txt');
     assert.strictEqual(createdFiles[1].modeName, 'Plain Text');
     assert.strictEqual(createdFiles[1].content, '');
+    assert.strictEqual(createdFiles[1].canRename, true);
+    assert(typeof createdFiles[1].ownerToken === 'string' && createdFiles[1].ownerToken.length > 0);
 
     const renameTabBody = JSON.stringify({
       operationName: 'updateCodeshareFileActionMutation',
-      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content } } } }',
+      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content canRename ownerToken renameRev } } } }',
       variables: {
         input: {
           id: encodeRelayId('Codeshare', shortId),
@@ -316,6 +318,8 @@ async function runVerification() {
             id: 'file-txt-2',
             name: 'notes.md',
             modeName: 'Markdown',
+            ownerToken: createdFiles[1].ownerToken,
+            renameRev: 1,
             clientId: 'test-client-A'
           }
         }
@@ -338,7 +342,153 @@ async function runVerification() {
     const renamedFiles = renameTabJson.data.updateCodeshare.codeshare.files;
     assert.strictEqual(renamedFiles[1].name, 'notes.md');
     assert.strictEqual(renamedFiles[1].modeName, 'Markdown');
-    console.log('✓ Multi-Tab / Multi-File Rooms (.txt default on New File, rename, update & real-time sync) verified.');
+    assert.strictEqual(renamedFiles[1].renameRev, 1);
+
+    // Verify Creator-Only File Rename Algorithm: another user (User B) cannot rename User A's file,
+    // and User B CAN create and rename User B's own file while User A cannot rename User B's file!
+    const userBSessionRes = await httpRequest(port, { path: `/${shortId}`, method: 'GET' });
+    const userBCookies = userBSessionRes.headers['set-cookie'] || [];
+    const userBCookieHeader = userBCookies.map((c) => c.split(';')[0]).join('; ');
+    assert(userBCookieHeader.includes('sid='));
+
+    const unauthorizedRenameRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: userBCookieHeader
+        }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareFileActionMutation',
+        query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name } } } }',
+        variables: {
+          input: {
+            id: encodeRelayId('Codeshare', shortId),
+            fileAction: {
+              type: 'rename',
+              id: 'file-txt-2',
+              name: 'hacked.js',
+              clientId: 'test-client-B'
+            }
+          }
+        }
+      })
+    );
+    const unauthorizedRenameJson = JSON.parse(unauthorizedRenameRes.body);
+    assert(
+      unauthorizedRenameJson.errors &&
+        unauthorizedRenameJson.errors[0] &&
+        unauthorizedRenameJson.errors[0].code === 'FILE_RENAME_FORBIDDEN'
+    );
+
+    // User B creates their own file ('file-userB-3') and renames it to 'worker.py'
+    const userBCreateRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: userBCookieHeader
+        }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareFileActionMutation',
+        query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName canRename ownerToken } } } }',
+        variables: {
+          input: {
+            id: encodeRelayId('Codeshare', shortId),
+            fileAction: {
+              type: 'create',
+              id: 'file-userB-3',
+              clientId: 'test-client-B'
+            }
+          }
+        }
+      })
+    );
+    const userBCreateJson = JSON.parse(userBCreateRes.body);
+    const userBFiles = userBCreateJson.data.updateCodeshare.codeshare.files;
+    const file1ForB = userBFiles.find((f) => f.id === 'file-txt-2');
+    const file3ForB = userBFiles.find((f) => f.id === 'file-userB-3');
+    assert.strictEqual(file1ForB.canRename, false);
+    assert.strictEqual(file1ForB.ownerToken, null);
+    assert.strictEqual(file3ForB.canRename, true);
+    assert(typeof file3ForB.ownerToken === 'string' && file3ForB.ownerToken.length > 0);
+
+    // User B renames their own file ('file-userB-3') -> succeeds
+    const userBRenameRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: userBCookieHeader
+        }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareFileActionMutation',
+        query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName renameRev } } } }',
+        variables: {
+          input: {
+            id: encodeRelayId('Codeshare', shortId),
+            fileAction: {
+              type: 'rename',
+              id: 'file-userB-3',
+              name: 'worker.py',
+              ownerToken: file3ForB.ownerToken,
+              renameRev: 1,
+              clientId: 'test-client-B'
+            }
+          }
+        }
+      })
+    );
+    const userBRenameJson = JSON.parse(userBRenameRes.body);
+    const renamedFile3 = userBRenameJson.data.updateCodeshare.codeshare.files.find(
+      (f) => f.id === 'file-userB-3'
+    );
+    assert.strictEqual(renamedFile3.name, 'worker.py');
+    assert.strictEqual(renamedFile3.modeName, 'Python');
+
+    // User A (room creator, but NOT creator of 'file-userB-3') tries to rename User B's file -> FORBIDDEN!
+    const userATriesRenameUserBFile = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: cookieHeader
+        }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareFileActionMutation',
+        query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name } } } }',
+        variables: {
+          input: {
+            id: encodeRelayId('Codeshare', shortId),
+            fileAction: {
+              type: 'rename',
+              id: 'file-userB-3',
+              name: 'stolen.js',
+              clientId: 'test-client-A'
+            }
+          }
+        }
+      })
+    );
+    const userATriesJson = JSON.parse(userATriesRenameUserBFile.body);
+    assert(
+      userATriesJson.errors &&
+        userATriesJson.errors[0] &&
+        userATriesJson.errors[0].code === 'FILE_RENAME_FORBIDDEN'
+    );
+    console.log('✓ Multi-Tab / Multi-File Rooms (.txt default, creator-only HMAC rename algorithm & real-time sync) verified.');
 
     // Verify URL Change Isolation: changing the URL in the browser opens a brand-new empty room
     // and keeps the original code in the original URL room!

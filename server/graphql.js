@@ -191,14 +191,28 @@ function formatCodeshareNode(cs, viewerRawUserId, options = {}) {
     ? cs.canEditUserIds.map((uid) => encodeRelayId('User', uid))
     : null;
 
-  const roomFiles = db.ensureCodeshareFiles(cs).map((f) => ({
-    id: String(f.id || 'main'),
-    name: String(f.name || 'index.js'),
-    modeName: String(f.modeName || cs.modeName || 'Plain Text'),
-    content: f.id === 'main' ? '' : String(f.content || ''),
-    updatedAt: f.updatedAt || cs.updatedAt || cs.createdAt,
-    lastClientId: f.lastClientId || null
-  }));
+  const roomFiles = db.ensureCodeshareFiles(cs).map((f) => {
+    const ownerRawId = f.createdByUserId || cs.createdByUserId;
+    const canRename = db.canUserRenameFile(cs, f, viewerRawUserId);
+    const ownerToken = canRename
+      ? db.computeFileOwnerSignature(cs.id, f.id, viewerRawUserId)
+      : null;
+    return {
+      id: String(f.id || 'main'),
+      name: String(f.name || 'index.js'),
+      modeName: String(f.modeName || cs.modeName || 'Plain Text'),
+      content: f.id === 'main' ? '' : String(f.content || ''),
+      updatedAt: f.updatedAt || cs.updatedAt || cs.createdAt,
+      lastClientId: f.lastClientId || null,
+      canRename: Boolean(canRename),
+      ownerToken: ownerToken || null,
+      renameRev: Number(f.renameRev || 0),
+      createdBy: {
+        me: Boolean(canRename),
+        userId: encodeRelayId('User', ownerRawId)
+      }
+    };
+  });
 
   return {
     id: encodeRelayId('Codeshare', cs.id),

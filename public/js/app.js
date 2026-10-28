@@ -263,6 +263,28 @@
     if (el) el.remove();
   }
 
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {}
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = String(text ?? '');
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // =========================================================================
   // 3. Split HTTP + WebSocket GraphQL Client (Module 51726 & 32216)
   // =========================================================================
@@ -618,7 +640,7 @@
       }
       const shareInput = document.getElementById('share-url-input');
       if (shareInput && document.activeElement !== shareInput) {
-        shareInput.value = window.location.origin + newPath;
+        shareInput.value = window.location.origin + newPath + window.location.hash;
       }
     }
 
@@ -771,6 +793,152 @@
     let suppressEditorChanges = false;
     let checkpointFailed = false;
 
+    // =======================================================================
+    // 6b. Smart Line-Range Permalinks (#L10 or #L10-L22)
+    // =======================================================================
+    let activePermalinkRange = null; // { startLine: number, endLine: number } (1-based)
+    let permalinkAnchorLine = null;  // 1-based anchor for Shift+Click range selection
+    let highlightedLineHandles = []; // CodeMirror LineHandle[]
+
+    function parsePermalinkHash(hashStr) {
+      const raw = String(hashStr || '').trim();
+      const match = /^#?L(\d+)(?:-L?(\d+))?$/i.exec(raw);
+      if (!match) return null;
+      const a = Math.max(1, parseInt(match[1], 10));
+      const b = match[2] ? Math.max(1, parseInt(match[2], 10)) : a;
+      return {
+        startLine: Math.min(a, b),
+        endLine: Math.max(a, b)
+      };
+    }
+
+    function formatPermalinkHash(startLine, endLine) {
+      const s = Math.max(1, Math.min(startLine, endLine));
+      const e = Math.max(1, Math.max(startLine, endLine));
+      return s === e ? `#L${s}` : `#L${s}-L${e}`;
+    }
+
+    function clearPermalinkDecorations() {
+      cm.operation(() => {
+        for (const handle of highlightedLineHandles) {
+          cm.removeLineClass(handle, 'wrap', 'cm-permalink-line');
+          cm.removeLineClass(handle, 'wrap', 'cm-permalink-line-start');
+          cm.removeLineClass(handle, 'wrap', 'cm-permalink-line-end');
+          cm.removeLineClass(handle, 'background', 'cm-permalink-line-bg');
+          cm.removeLineClass(handle, 'gutter', 'cm-permalink-gutter');
+        }
+        highlightedLineHandles = [];
+      });
+    }
+
+    function renderPermalinkHighlight({ scrollIntoView = false } = {}) {
+      clearPermalinkDecorations();
+      const bannerEl = document.getElementById('permalink-banner');
+      const badgeEl = document.getElementById('permalink-range-badge');
+
+      if (!activePermalinkRange) {
+        if (bannerEl) bannerEl.hidden = true;
+        return;
+      }
+
+      const lineCount = Math.max(1, cm.lineCount());
+      const startLine = Math.min(lineCount, Math.max(1, activePermalinkRange.startLine));
+      const endLine = Math.min(lineCount, Math.max(startLine, activePermalinkRange.endLine));
+      const hashLabel = formatPermalinkHash(
+        activePermalinkRange.startLine,
+        activePermalinkRange.endLine
+      );
+
+      cm.operation(() => {
+        for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
+          const lineIdx = lineNum - 1;
+          const handle = cm.getLineHandle(lineIdx);
+          if (!handle) continue;
+          cm.addLineClass(handle, 'wrap', 'cm-permalink-line');
+          cm.addLineClass(handle, 'background', 'cm-permalink-line-bg');
+          cm.addLineClass(handle, 'gutter', 'cm-permalink-gutter');
+          if (lineNum === startLine) {
+            cm.addLineClass(handle, 'wrap', 'cm-permalink-line-start');
+          }
+          if (lineNum === endLine) {
+            cm.addLineClass(handle, 'wrap', 'cm-permalink-line-end');
+          }
+          highlightedLineHandles.push(handle);
+        }
+      });
+
+      if (badgeEl) badgeEl.textContent = hashLabel;
+      if (bannerEl) bannerEl.hidden = false;
+
+      if (scrollIntoView && cm.getValue().length > 0) {
+        try {
+          cm.scrollIntoView(
+            {
+              from: { line: startLine - 1, ch: 0 },
+              to: { line: endLine - 1, ch: 0 }
+            },
+            120
+          );
+        } catch (_) {}
+      }
+    }
+
+    function setPermalinkRange(
+      startLine,
+      endLine,
+      { updateUrl = true, scrollIntoView = false } = {}
+    ) {
+      const s = Math.max(1, Math.min(startLine, endLine));
+      const e = Math.max(1, Math.max(startLine, endLine));
+      activePermalinkRange = { startLine: s, endLine: e };
+      const hash = formatPermalinkHash(s, e);
+      if (updateUrl && window.history && window.history.replaceState) {
+        const nextUrl = window.location.pathname + window.location.search + hash;
+        window.history.replaceState(null, '', nextUrl);
+        const shareInput = document.getElementById('share-url-input');
+        if (shareInput && document.activeElement !== shareInput) {
+          shareInput.value = window.location.origin + nextUrl;
+        }
+      }
+      renderPermalinkHighlight({ scrollIntoView });
+    }
+
+    function clearPermalink(updateUrl = true) {
+      activePermalinkRange = null;
+      permalinkAnchorLine = null;
+      clearPermalinkDecorations();
+      const bannerEl = document.getElementById('permalink-banner');
+      if (bannerEl) bannerEl.hidden = true;
+      if (updateUrl && window.location.hash && window.history && window.history.replaceState) {
+        const cleanUrl = window.location.pathname + window.location.search;
+        window.history.replaceState(null, '', cleanUrl);
+        const shareInput = document.getElementById('share-url-input');
+        if (shareInput && document.activeElement !== shareInput) {
+          shareInput.value = window.location.origin + cleanUrl;
+        }
+      }
+    }
+
+    function getCurrentSelectionLineRange() {
+      const doc = cm.getDoc();
+      const sel = doc.listSelections && doc.listSelections()[0];
+      if (!sel) {
+        const pos = cm.getCursor();
+        return { startLine: pos.line + 1, endLine: pos.line + 1 };
+      }
+      const fromLine = Math.min(sel.anchor.line, sel.head.line) + 1;
+      let toLine = Math.max(sel.anchor.line, sel.head.line) + 1;
+      const maxPos =
+        sel.anchor.line > sel.head.line ||
+        (sel.anchor.line === sel.head.line && sel.anchor.ch > sel.head.ch)
+          ? sel.anchor
+          : sel.head;
+      if (toLine > fromLine && maxPos.ch === 0) {
+        toLine -= 1;
+      }
+      return { startLine: fromLine, endLine: toLine };
+    }
+
     function applyTextOperationToCodeMirror(op) {
       suppressEditorChanges = true;
       cm.operation(() => {
@@ -793,6 +961,9 @@
       });
       suppressEditorChanges = false;
       updateStatusMetrics();
+      if (activePermalinkRange) {
+        renderPermalinkHighlight({ scrollIntoView: false });
+      }
     }
 
     function reconstructInitialDocument() {
@@ -816,6 +987,15 @@
       }
       updatePlaceholderVisibility();
       updateRevisionBadge();
+
+      const initialHashRange = parsePermalinkHash(window.location.hash);
+      if (initialHashRange) {
+        permalinkAnchorLine = initialHashRange.startLine;
+        setPermalinkRange(initialHashRange.startLine, initialHashRange.endLine, {
+          updateUrl: false,
+          scrollIntoView: true
+        });
+      }
     }
 
     function updatePlaceholderVisibility() {
@@ -841,6 +1021,11 @@
       const cursorEl = document.getElementById('status-cursor-label');
       if (cursorEl) {
         cursorEl.textContent = `Ln ${pos.line + 1}, Col ${pos.ch + 1}`;
+      }
+      const statusPermalinkLabel = document.getElementById('status-permalink-label');
+      if (statusPermalinkLabel) {
+        const { startLine, endLine } = getCurrentSelectionLineRange();
+        statusPermalinkLabel.textContent = formatPermalinkHash(startLine, endLine);
       }
     }
 
@@ -1016,6 +1201,9 @@
 
       updatePlaceholderVisibility();
       updateStatusMetrics();
+      if (activePermalinkRange) {
+        renderPermalinkHighlight({ scrollIntoView: false });
+      }
     });
 
     // =======================================================================
@@ -1512,6 +1700,164 @@
       });
     }
 
+    // One-Click Copy Code Button (`#codeshare-copy-button` & Ctrl+Shift+C)
+    const copyCodeBtn = document.getElementById('codeshare-copy-button');
+    const copyCodeLabel = document.getElementById('codeshare-copy-label');
+    let copyResetTimer = null;
+
+    async function triggerCopyCode() {
+      const hasSelection = cm.somethingSelected();
+      const textToCopy = hasSelection ? cm.getSelection() : cm.getValue();
+      const ok = await copyTextToClipboard(textToCopy);
+      if (!ok) return;
+
+      if (copyCodeBtn) {
+        copyCodeBtn.setAttribute('data-copied', 'true');
+        if (copyCodeLabel) copyCodeLabel.textContent = 'Copied!';
+        if (copyResetTimer) clearTimeout(copyResetTimer);
+        copyResetTimer = setTimeout(() => {
+          copyCodeBtn.removeAttribute('data-copied');
+          if (copyCodeLabel) copyCodeLabel.textContent = 'Copy';
+        }, 2000);
+      }
+
+      if (hasSelection) {
+        showToast('Copied selected code to clipboard!', { duration: 2400 });
+      } else {
+        const lineCount = textToCopy ? textToCopy.split('\n').length : 0;
+        showToast(
+          lineCount > 0
+            ? `Copied all code to clipboard (${lineCount} ${lineCount === 1 ? 'line' : 'lines'})`
+            : 'Copied to clipboard!',
+          { duration: 2400 }
+        );
+      }
+    }
+
+    if (copyCodeBtn) {
+      copyCodeBtn.addEventListener('click', triggerCopyCode);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        triggerCopyCode();
+      } else if (
+        e.key === 'Escape' &&
+        activePermalinkRange &&
+        !document.querySelector('dialog[open]')
+      ) {
+        clearPermalink(true);
+      }
+    });
+
+    // Gutter Line-Number Click & Shift+Click Range Permalink Selection
+    cm.on('gutterClick', (_instance, lineZeroBased, _gutter, clickEvent) => {
+      const clickedLine = lineZeroBased + 1;
+      if (clickEvent && clickEvent.shiftKey && permalinkAnchorLine !== null) {
+        setPermalinkRange(permalinkAnchorLine, clickedLine, {
+          updateUrl: true,
+          scrollIntoView: false
+        });
+      } else if (
+        activePermalinkRange &&
+        activePermalinkRange.startLine === clickedLine &&
+        activePermalinkRange.endLine === clickedLine
+      ) {
+        clearPermalink(true);
+      } else {
+        permalinkAnchorLine = clickedLine;
+        setPermalinkRange(clickedLine, clickedLine, {
+          updateUrl: true,
+          scrollIntoView: false
+        });
+      }
+    });
+
+    // Status Pill Permalink Trigger (`#status-permalink-btn`)
+    const statusPermalinkBtn = document.getElementById('status-permalink-btn');
+    if (statusPermalinkBtn) {
+      statusPermalinkBtn.addEventListener('click', async () => {
+        const { startLine, endLine } = getCurrentSelectionLineRange();
+        permalinkAnchorLine = startLine;
+        setPermalinkRange(startLine, endLine, {
+          updateUrl: true,
+          scrollIntoView: false
+        });
+        const hashLabel = formatPermalinkHash(startLine, endLine);
+        await copyTextToClipboard(window.location.href);
+        showToast(`Copied line permalink ${hashLabel} to clipboard!`, { duration: 2600 });
+      });
+    }
+
+    // Floating Permalink Banner Actions (`#permalink-copy-url-btn`, `#permalink-copy-lines-btn`, `#permalink-clear-btn`)
+    const permalinkCopyUrlBtn = document.getElementById('permalink-copy-url-btn');
+    const permalinkCopyUrlLabel = document.getElementById('permalink-copy-url-label');
+    const permalinkCopyLinesBtn = document.getElementById('permalink-copy-lines-btn');
+    const permalinkCopyLinesLabel = document.getElementById('permalink-copy-lines-label');
+    const permalinkClearBtn = document.getElementById('permalink-clear-btn');
+
+    if (permalinkCopyUrlBtn) {
+      permalinkCopyUrlBtn.addEventListener('click', async () => {
+        const ok = await copyTextToClipboard(window.location.href);
+        if (!ok) return;
+        if (permalinkCopyUrlLabel) {
+          permalinkCopyUrlLabel.textContent = 'Copied Link!';
+          setTimeout(() => {
+            permalinkCopyUrlLabel.textContent = 'Copy Line Link';
+          }, 2000);
+        }
+        const badge = activePermalinkRange
+          ? formatPermalinkHash(activePermalinkRange.startLine, activePermalinkRange.endLine)
+          : '';
+        showToast(`Copied ${badge} link to clipboard!`, { duration: 2400 });
+      });
+    }
+
+    if (permalinkCopyLinesBtn) {
+      permalinkCopyLinesBtn.addEventListener('click', async () => {
+        if (!activePermalinkRange) return;
+        const maxLines = Math.max(1, cm.lineCount());
+        const sIdx = Math.min(maxLines, Math.max(1, activePermalinkRange.startLine)) - 1;
+        const eIdx = Math.min(maxLines, Math.max(1, activePermalinkRange.endLine)) - 1;
+        const endLineText = cm.getLine(eIdx) || '';
+        const rangeText = cm.getRange(
+          { line: sIdx, ch: 0 },
+          { line: eIdx, ch: endLineText.length }
+        );
+        const ok = await copyTextToClipboard(rangeText);
+        if (!ok) return;
+        if (permalinkCopyLinesLabel) {
+          permalinkCopyLinesLabel.textContent = 'Copied Lines!';
+          setTimeout(() => {
+            permalinkCopyLinesLabel.textContent = 'Copy Lines';
+          }, 2000);
+        }
+        const badge = formatPermalinkHash(
+          activePermalinkRange.startLine,
+          activePermalinkRange.endLine
+        );
+        showToast(`Copied code from ${badge} to clipboard!`, { duration: 2400 });
+      });
+    }
+
+    if (permalinkClearBtn) {
+      permalinkClearBtn.addEventListener('click', () => clearPermalink(true));
+    }
+
+    window.addEventListener('hashchange', () => {
+      const parsed = parsePermalinkHash(window.location.hash);
+      if (parsed) {
+        permalinkAnchorLine = parsed.startLine;
+        setPermalinkRange(parsed.startLine, parsed.endLine, {
+          updateUrl: false,
+          scrollIntoView: true
+        });
+      } else {
+        clearPermalink(false);
+      }
+    });
+
     // Download Button (`#codeshare-download-button`)
     const downloadBtn = document.getElementById('codeshare-download-button');
     if (downloadBtn) {
@@ -1653,6 +1999,25 @@
   // 10. Auth Modals, Pro Checkout, Saved Codeshares (/codes), Settings & Admin
   // =========================================================================
   function initGlobalForms() {
+    // Home Page Studio Preview One-Click Copy Snippet Button (`#home-copy-preview-btn`)
+    const homeCopyBtn = document.getElementById('home-copy-preview-btn');
+    const homeCopyLabel = document.getElementById('home-copy-preview-label');
+    const homePreviewPre = document.getElementById('home-studio-preview-code');
+    if (homeCopyBtn && homePreviewPre) {
+      homeCopyBtn.addEventListener('click', async () => {
+        const text = homePreviewPre.textContent || '';
+        const ok = await copyTextToClipboard(text);
+        if (!ok) return;
+        if (homeCopyLabel) {
+          homeCopyLabel.textContent = '✓ Copied!';
+          setTimeout(() => {
+            homeCopyLabel.textContent = 'Copy Snippet';
+          }, 2000);
+        }
+        showToast('Copied studio snippet to clipboard!', { duration: 2400 });
+      });
+    }
+
     // Home Page "Join Existing" Room Form (`#join-existing-form`)
     const joinForm = document.getElementById('join-existing-form');
     if (joinForm) {
@@ -1662,6 +2027,12 @@
         let raw = (inputEl.value || '').trim();
         if (!raw) return;
         e.preventDefault();
+        let lineHash = '';
+        const hashMatch = /#(L\d+(?:-L?\d+)?)$/i.exec(raw);
+        if (hashMatch) {
+          lineHash = '#' + hashMatch[1].toUpperCase();
+          raw = raw.slice(0, hashMatch.index);
+        }
         try {
           if (/^https?:\/\//i.test(raw)) {
             const parsed = new URL(raw);
@@ -1679,7 +2050,7 @@
           .replace(/^-+|-+$/g, '')
           .slice(0, 64);
         if (slug) {
-          window.location.href = '/' + encodeURIComponent(slug);
+          window.location.href = '/' + encodeURIComponent(slug) + lineHash;
         }
       });
     }

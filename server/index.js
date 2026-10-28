@@ -151,12 +151,18 @@ app.get('/join', (req, res) => {
     return;
   }
   let targetSlug = rawInput;
+  let lineHash = '';
+  const hashMatch = /#(L\d+(?:-L?\d+)?)$/i.exec(rawInput);
+  if (hashMatch) {
+    lineHash = '#' + hashMatch[1].toUpperCase();
+    targetSlug = rawInput.slice(0, hashMatch.index);
+  }
   try {
-    if (/^https?:\/\//i.test(rawInput)) {
-      const parsedUrl = new URL(rawInput);
+    if (/^https?:\/\//i.test(targetSlug)) {
+      const parsedUrl = new URL(targetSlug);
       targetSlug = parsedUrl.pathname.replace(/^\/+|\/+$/g, '');
-    } else if (rawInput.includes('/')) {
-      const parts = rawInput.split('/').filter(Boolean);
+    } else if (targetSlug.includes('/')) {
+      const parts = targetSlug.split('/').filter(Boolean);
       targetSlug = parts[parts.length - 1];
     }
   } catch (_) {}
@@ -171,7 +177,7 @@ app.get('/join', (req, res) => {
     res.redirect(302, '/');
     return;
   }
-  res.redirect(302, `/${encodeURIComponent(targetSlug)}`);
+  res.redirect(302, `/${encodeURIComponent(targetSlug)}${lineHash}`);
 });
 
 // 5. Saved Codeshares Dashboard (`GET /codes`)

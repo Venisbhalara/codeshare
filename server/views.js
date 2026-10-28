@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.14" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.16" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.14" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.16" />
 </head>`;
 }
 
@@ -103,7 +103,12 @@ function renderNavbar({ me, codeshare = null }) {
       </button>
       ${
         codeshare
-          ? `<button type="button" id="codeshare-download-button" class="btn btn-glass btn-icon-responsive" title="Download File" aria-label="Download File">
+          ? `<button type="button" id="codeshare-copy-button" class="btn btn-glass btn-icon-responsive" title="Copy Code (Ctrl+Shift+C)" aria-label="Copy Code">
+               <svg class="copy-icon-default" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+               <svg class="copy-icon-success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+               <span class="btn-label" id="codeshare-copy-label">Copy</span>
+             </button>
+             <button type="button" id="codeshare-download-button" class="btn btn-glass btn-icon-responsive" title="Download File" aria-label="Download File">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                <span class="btn-label">Download</span>
              </button>
@@ -228,9 +233,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.14"></script>
-  <script src="/shared/ot.js?v=v3.40.14"></script>
-  <script src="/shared/catalog.js?v=v3.40.14"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.16"></script>
+  <script src="/shared/ot.js?v=v3.40.16"></script>
+  <script src="/shared/catalog.js?v=v3.40.16"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -238,7 +243,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.14"></script>
+  <script src="/-/js/app.js?v=v3.40.16"></script>
 </body>
 </html>`;
 }
@@ -268,8 +273,25 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
     <main class="editor-stage">
       <section class="editor-canvas" data-lenis-prevent aria-label="Collaborative Code Editor">
         <div id="editor-container"></div>
+        <div id="permalink-banner" class="permalink-banner" hidden aria-live="polite">
+          <span class="permalink-badge mono" id="permalink-range-badge">#L1</span>
+          <button type="button" id="permalink-copy-url-btn" class="permalink-action-btn" title="Copy shareable link to highlighted lines">
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span id="permalink-copy-url-label">Copy Line Link</span>
+          </button>
+          <button type="button" id="permalink-copy-lines-btn" class="permalink-action-btn" title="Copy code from highlighted lines">
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span id="permalink-copy-lines-label">Copy Lines</span>
+          </button>
+          <button type="button" id="permalink-clear-btn" class="permalink-clear-btn" title="Clear line highlight (Esc)" aria-label="Clear line highlight">✕</button>
+        </div>
         <div class="editor-status-pill" aria-live="polite">
           <span id="status-cursor-label" class="mono">Ln 1, Col 1</span>
+          <span class="status-dot-sep" aria-hidden="true">•</span>
+          <button type="button" id="status-permalink-btn" class="status-permalink-btn mono" title="Click to create & copy permalink for current line or selection (or click any line number, Shift+Click for range)">
+            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span id="status-permalink-label">#L1</span>
+          </button>
         </div>
         <!-- Legacy WebRTC containers preserved for structural parity -->
         <div id="local-video" hidden></div>
@@ -360,9 +382,16 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
     <section class="minimal-card" style="padding:0;overflow:clip;">
       <div class="studio-preview-header">
         <span class="mono" style="font-size:12px;color:var(--text-secondary);">codeeflow.io/G8WoB4 — Live Collaborative Studio</span>
-        <a href="/G8WoB4" class="btn btn-glass btn-pill" style="height:30px;">Open Live Room →</a>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="home-copy-preview-btn" class="btn btn-glass btn-pill" style="height:30px;padding:0 12px;font-size:12px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span id="home-copy-preview-label">Copy Snippet</span>
+          </button>
+          <a href="/G8WoB4#L2-L4" class="btn btn-glass btn-pill" style="height:30px;padding:0 12px;font-size:12px;" title="Open room highlighting lines 2–4">#L2-L4</a>
+          <a href="/G8WoB4" class="btn btn-glass btn-pill" style="height:30px;">Open Live Room →</a>
+        </div>
       </div>
-      <pre class="mono studio-preview-pre"><code><span style="color:var(--text-muted);">// Real-time Operational Transformation over WebSocket (CodeeFlow Live Engine)</span>
+      <pre id="home-studio-preview-code" class="mono studio-preview-pre"><code><span style="color:var(--text-muted);">// Real-time Operational Transformation over WebSocket (CodeeFlow Live Engine)</span>
 <span style="color:var(--accent-gold);font-weight:600;">async function</span> <span style="color:var(--accent-primary);font-weight:600;">collaborate</span>(roomId = <span style="color:var(--accent-emerald);">"G8WoB4"</span>) {
   <span style="color:var(--accent-gold);font-weight:600;">const</span> session = <span style="color:var(--accent-gold);font-weight:600;">await</span> SessionHelper.getOrCreate();
   <span style="color:var(--accent-gold);font-weight:600;">return</span> FirepadOT.connect({ roomId, checkpointInterval: <span style="color:var(--accent-gold);">100</span> });

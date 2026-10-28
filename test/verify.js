@@ -198,6 +198,19 @@ async function runVerification() {
     assert.strictEqual(joinRes.status, 302);
     assert.strictEqual(joinRes.headers.location, `/${shortId}`);
 
+    const joinLineRangeRes = await httpRequest(port, {
+      path: `/join?room=${encodeURIComponent(`http://localhost:3000/${shortId}#L10-L22`)}`,
+      method: 'GET'
+    });
+    assert.strictEqual(joinLineRangeRes.status, 302);
+    assert.strictEqual(joinLineRangeRes.headers.location, `/${shortId}#L10-L22`);
+
+    const appJsRes = await httpRequest(port, { path: '/-/js/app.js', method: 'GET' });
+    assert.strictEqual(appJsRes.status, 200);
+    assert(appJsRes.body.includes('parsePermalinkHash'));
+    assert(appJsRes.body.includes('formatPermalinkHash'));
+    assert(appJsRes.body.includes('triggerCopyCode'));
+
     const customTitle = `Studio Session ${shortId}`;
     const expectedSlug = `Studio-Session-${shortId}`;
     const gqlRenameBody = JSON.stringify({
@@ -235,6 +248,12 @@ async function runVerification() {
     assert.strictEqual(slugRoomRes.status, 200);
     assert(slugRoomRes.body.includes(customTitle));
     assert(slugRoomRes.body.includes(`"shortId":"${shortId}"`));
+    assert(slugRoomRes.body.includes('id="codeshare-copy-button"'));
+    assert(slugRoomRes.body.includes('id="permalink-banner"'));
+    assert(slugRoomRes.body.includes('id="permalink-copy-url-btn"'));
+    assert(slugRoomRes.body.includes('id="permalink-copy-lines-btn"'));
+    assert(slugRoomRes.body.includes('id="status-permalink-btn"'));
+    console.log('✓ One-Click Copy Code & Smart Line-Range Permalinks (#L10-L22) verified.');
 
     // Verify URL -> Title Sync (changing URL in browser address bar updates room Title)
     const urlDrivenSlug = `Url-Driven-Title-${shortId}`;

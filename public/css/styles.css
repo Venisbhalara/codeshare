@@ -5,46 +5,240 @@
 
 :root {
   color-scheme: light dark;
-
-  &:has(> head > meta[name="color-scheme"][content="dark"]) {
-    color-scheme: dark;
-  }
-  &:has(> head > meta[name="color-scheme"][content="light"]) {
-    color-scheme: light;
-  }
+  --color-scheme: light;
 
   /* Typography */
   --font-display: 'Instrument Serif', 'Playfair Display', Georgia, serif;
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 
-  /* Warm Alabaster & Botanical Studio Surfaces (Default Light) + Soft Nordic Slate (Dusk, non-black) */
-  --bg-canvas: light-dark(#F6F3EC, #1E2530);
-  --bg-elevated: light-dark(#FFFDF9, #252E3C);
-  --bg-subtle: light-dark(#EDE8DD, #2D3748);
-  --bg-hover: light-dark(#E2DDD0, #364154);
-  --bg-glass: light-dark(rgba(255, 253, 249, 0.9), rgba(37, 46, 60, 0.9));
+  /* Raw Light & Dark Palette Tokens (modern-web-guidance: dark-mode) */
+  --bg-canvas-light: #F6F3EC;
+  --bg-canvas-dark: #0D131A;
+  --bg-elevated-light: #FFFDF9;
+  --bg-elevated-dark: #151F2A;
+  --bg-subtle-light: #EDE8DD;
+  --bg-subtle-dark: #1D2A38;
+  --bg-hover-light: #E2DDD0;
+  --bg-hover-dark: #263647;
+  --bg-glass-light: rgba(255, 253, 249, 0.88);
+  --bg-glass-dark: rgba(21, 31, 42, 0.88);
 
-  /* Typography Colors */
-  --text-primary: light-dark(#1C2420, #F4F1EA);
-  --text-secondary: light-dark(#525E57, #B8C2CC);
-  --text-muted: light-dark(#76827B, #8795A4);
+  --text-primary-light: #18221D;
+  --text-primary-dark: #F4F7F5;
+  --text-secondary-light: #4A5750;
+  --text-secondary-dark: #B6C5BE;
+  --text-muted-light: #6C7A72;
+  --text-muted-dark: #82968D;
 
-  /* Borders & Botanical / Terracotta Accents */
-  --border-hairline: light-dark(rgba(28, 36, 32, 0.12), rgba(244, 241, 234, 0.14));
-  --border-strong: light-dark(rgba(28, 36, 32, 0.28), rgba(244, 241, 234, 0.3));
-  --accent-primary: light-dark(#1B4332, #D8E6DF);
-  --accent-primary-fg: light-dark(#FFFDF9, #182820);
-  --accent-gold: light-dark(#B85D3B, #E59876);
+  --border-hairline-light: rgba(24, 34, 29, 0.12);
+  --border-hairline-dark: rgba(244, 247, 245, 0.14);
+  --border-strong-light: rgba(24, 34, 29, 0.28);
+  --border-strong-dark: rgba(244, 247, 245, 0.30);
+
+  --accent-primary-light: #1B4332;
+  --accent-primary-dark: #34D399;
+  --accent-primary-fg-light: #FFFDF9;
+  --accent-primary-fg-dark: #071912;
+  --accent-gold-light: #B85D3B;
+  --accent-gold-dark: #F4A27E;
+  --accent-emerald-light: #2D6A4F;
+  --accent-emerald-dark: #52B788;
+  --accent-danger-light: #C5221F;
+  --accent-danger-dark: #F87171;
+  --accent-danger-bg-light: #FCE8E6;
+  --accent-danger-bg-dark: rgba(248, 113, 113, 0.16);
+  --scrollbar-thumb-light: #C4BEB0;
+  --scrollbar-thumb-dark: #3B4D61;
+
+  /* Default Light Token Fallbacks */
+  --bg-canvas: var(--bg-canvas-light);
+  --bg-elevated: var(--bg-elevated-light);
+  --bg-subtle: var(--bg-subtle-light);
+  --bg-hover: var(--bg-hover-light);
+  --bg-glass: var(--bg-glass-light);
+  --text-primary: var(--text-primary-light);
+  --text-secondary: var(--text-secondary-light);
+  --text-muted: var(--text-muted-light);
+  --border-hairline: var(--border-hairline-light);
+  --border-strong: var(--border-strong-light);
+  --accent-primary: var(--accent-primary-light);
+  --accent-primary-fg: var(--accent-primary-fg-light);
+  --accent-gold: var(--accent-gold-light);
+  --accent-emerald: var(--accent-emerald-light);
+  --accent-danger: var(--accent-danger-light);
+  --accent-danger-bg: var(--accent-danger-bg-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  /* Fallback for browsers without light-dark() support */
+  @media (prefers-color-scheme: dark) {
+    --color-scheme: dark;
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-elevated: var(--bg-elevated-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --bg-hover: var(--bg-hover-dark);
+    --bg-glass: var(--bg-glass-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --text-muted: var(--text-muted-dark);
+    --border-hairline: var(--border-hairline-dark);
+    --border-strong: var(--border-strong-dark);
+    --accent-primary: var(--accent-primary-dark);
+    --accent-primary-fg: var(--accent-primary-fg-dark);
+    --accent-gold: var(--accent-gold-dark);
+    --accent-emerald: var(--accent-emerald-dark);
+    --accent-danger: var(--accent-danger-dark);
+    --accent-danger-bg: var(--accent-danger-bg-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  /* Reflect <meta name="color-scheme"> override in CSS (modern-web-guidance: dark-mode-toggle) */
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+    --color-scheme: dark;
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-elevated: var(--bg-elevated-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --bg-hover: var(--bg-hover-dark);
+    --bg-glass: var(--bg-glass-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --text-muted: var(--text-muted-dark);
+    --border-hairline: var(--border-hairline-dark);
+    --border-strong: var(--border-strong-dark);
+    --accent-primary: var(--accent-primary-dark);
+    --accent-primary-fg: var(--accent-primary-fg-dark);
+    --accent-gold: var(--accent-gold-dark);
+    --accent-emerald: var(--accent-emerald-dark);
+    --accent-danger: var(--accent-danger-dark);
+    --accent-danger-bg: var(--accent-danger-bg-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+    --color-scheme: light;
+    --bg-canvas: var(--bg-canvas-light);
+    --bg-elevated: var(--bg-elevated-light);
+    --bg-subtle: var(--bg-subtle-light);
+    --bg-hover: var(--bg-hover-light);
+    --bg-glass: var(--bg-glass-light);
+    --text-primary: var(--text-primary-light);
+    --text-secondary: var(--text-secondary-light);
+    --text-muted: var(--text-muted-light);
+    --border-hairline: var(--border-hairline-light);
+    --border-strong: var(--border-strong-light);
+    --accent-primary: var(--accent-primary-light);
+    --accent-primary-fg: var(--accent-primary-fg-light);
+    --accent-gold: var(--accent-gold-light);
+    --accent-emerald: var(--accent-emerald-light);
+    --accent-danger: var(--accent-danger-light);
+    --accent-danger-bg: var(--accent-danger-bg-light);
+    --scrollbar-thumb: var(--scrollbar-thumb-light);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
+    --bg-elevated: light-dark(var(--bg-elevated-light), var(--bg-elevated-dark));
+    --bg-subtle: light-dark(var(--bg-subtle-light), var(--bg-subtle-dark));
+    --bg-hover: light-dark(var(--bg-hover-light), var(--bg-hover-dark));
+    --bg-glass: light-dark(var(--bg-glass-light), var(--bg-glass-dark));
+    --text-primary: light-dark(var(--text-primary-light), var(--text-primary-dark));
+    --text-secondary: light-dark(var(--text-secondary-light), var(--text-secondary-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --border-hairline: light-dark(var(--border-hairline-light), var(--border-hairline-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --accent-primary: light-dark(var(--accent-primary-light), var(--accent-primary-dark));
+    --accent-primary-fg: light-dark(var(--accent-primary-fg-light), var(--accent-primary-fg-dark));
+    --accent-gold: light-dark(var(--accent-gold-light), var(--accent-gold-dark));
+    --accent-emerald: light-dark(var(--accent-emerald-light), var(--accent-emerald-dark));
+    --accent-danger: light-dark(var(--accent-danger-light), var(--accent-danger-dark));
+    --accent-danger-bg: light-dark(var(--accent-danger-bg-light), var(--accent-danger-bg-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
   --accent-gold-bg: color-mix(in oklab, var(--accent-gold), transparent 86%);
-  --accent-emerald: light-dark(#2D6A4F, #52B788);
-  --accent-danger: light-dark(#C5221F, #F87171);
-  --accent-danger-bg: light-dark(#FCE8E6, rgba(248, 113, 113, 0.16));
 
   /* Browser UI Theming */
   accent-color: var(--accent-primary);
-  scrollbar-color: light-dark(#C4BEB0, #4A5568) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-width: thin;
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Theme Switch Visibility Branching (modern-web-guidance: selector-atrule-combinations & dark-mode-toggle) */
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.theme-switch-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.if-dark {
+  display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .if-dark {
+    display: inline-flex !important;
+  }
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .if-light {
+    display: none !important;
+  }
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .if-dark {
+  display: inline-flex !important;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .if-light {
+  display: none !important;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) .if-light {
+  display: inline-flex !important;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) .if-dark {
+  display: none !important;
+}
+
+@container not style(--color-scheme: dark) {
+  .if-dark {
+    display: none !important;
+  }
+}
+
+@container not style(--color-scheme: light) {
+  .if-light {
+    display: none !important;
+  }
 }
 
 @media (prefers-contrast: more) {
@@ -488,12 +682,15 @@ a {
   padding: 0 30px;
   font-size: 14.5px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%);
+  background: light-dark(
+    linear-gradient(135deg, #1B4332 0%, #2D6A4F 100%),
+    linear-gradient(135deg, #2D6A4F 0%, #40916C 100%)
+  );
   color: #FFFDF9;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid light-dark(rgba(255, 255, 255, 0.28), rgba(116, 198, 157, 0.45));
   box-shadow:
-    0 0 0 5px light-dark(rgba(255, 253, 249, 0.65), rgba(37, 46, 60, 0.55)),
-    0 14px 32px -6px rgba(27, 67, 50, 0.30),
+    0 0 0 5px light-dark(rgba(255, 253, 249, 0.65), rgba(52, 211, 153, 0.16)),
+    0 14px 32px -6px light-dark(rgba(27, 67, 50, 0.30), rgba(0, 0, 0, 0.45)),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(12px);
   transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
@@ -502,8 +699,8 @@ a {
 .btn-hero-primary:hover {
   transform: translateY(-1px);
   box-shadow:
-    0 0 0 6px light-dark(rgba(255, 253, 249, 0.82), rgba(37, 46, 60, 0.72)),
-    0 18px 38px -6px rgba(27, 67, 50, 0.36),
+    0 0 0 6px light-dark(rgba(255, 253, 249, 0.82), rgba(52, 211, 153, 0.24)),
+    0 18px 38px -6px light-dark(rgba(27, 67, 50, 0.36), rgba(0, 0, 0, 0.55)),
     inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
@@ -793,7 +990,7 @@ a {
   forced-color-adjust: none;
 }
 
-/* Warm Frosted Studio Light Enhancement for CodeMirror Default Eclipse/Light Themes */
+/* Warm Frosted Studio Light & Dark Enhancement for CodeMirror */
 .cm-s-eclipse.CodeMirror,
 .cm-s-neat.CodeMirror,
 .cm-s-mdn-like.CodeMirror,
@@ -806,8 +1003,8 @@ a {
 .cm-s-neat .CodeMirror-gutters,
 .cm-s-mdn-like .CodeMirror-gutters,
 .cm-s-duotone-light .CodeMirror-gutters {
-  background-color: light-dark(rgba(246, 243, 236, 0.42), rgba(30, 37, 48, 0.42)) !important;
-  border-right: 1px solid light-dark(rgba(28, 36, 32, 0.06), rgba(255, 255, 255, 0.06)) !important;
+  background-color: light-dark(rgba(246, 243, 236, 0.45), rgba(13, 19, 26, 0.48)) !important;
+  border-right: 1px solid var(--border-hairline) !important;
   color: var(--text-muted) !important;
 }
 
@@ -819,6 +1016,64 @@ a {
 
 .cm-s-eclipse .CodeMirror-cursor {
   border-left: 2px solid var(--accent-gold) !important;
+}
+
+.cm-s-eclipse div.CodeMirror-selected,
+.cm-s-eclipse.CodeMirror-focused div.CodeMirror-selected {
+  background: light-dark(rgba(45, 106, 79, 0.16), rgba(52, 211, 153, 0.24)) !important;
+}
+
+.cm-s-eclipse .CodeMirror-line::selection,
+.cm-s-eclipse .CodeMirror-line > span::selection,
+.cm-s-eclipse .CodeMirror-line > span > span::selection {
+  background: light-dark(rgba(45, 106, 79, 0.18), rgba(52, 211, 153, 0.26)) !important;
+}
+
+.cm-s-eclipse span.cm-comment {
+  color: var(--text-muted) !important;
+  font-style: italic;
+}
+
+.cm-s-eclipse span.cm-keyword {
+  color: var(--accent-gold) !important;
+  font-weight: 600;
+}
+
+.cm-s-eclipse span.cm-atom,
+.cm-s-eclipse span.cm-number {
+  color: light-dark(#9B4DCA, #C084FC) !important;
+}
+
+.cm-s-eclipse span.cm-def,
+.cm-s-eclipse span.cm-property {
+  color: light-dark(#1B4332, #6EE7B7) !important;
+}
+
+.cm-s-eclipse span.cm-variable,
+.cm-s-eclipse span.cm-punctuation,
+.cm-s-eclipse span.cm-operator {
+  color: var(--text-primary) !important;
+}
+
+.cm-s-eclipse span.cm-variable-2,
+.cm-s-eclipse span.cm-variable-3,
+.cm-s-eclipse span.cm-type {
+  color: light-dark(#0F6CBD, #7DD3FC) !important;
+}
+
+.cm-s-eclipse span.cm-string,
+.cm-s-eclipse span.cm-string-2 {
+  color: var(--accent-emerald) !important;
+}
+
+.cm-s-eclipse span.cm-tag,
+.cm-s-eclipse span.cm-attribute {
+  color: var(--accent-gold) !important;
+}
+
+.cm-s-eclipse .CodeMirror-matchingbracket {
+  color: var(--accent-emerald) !important;
+  text-decoration: underline;
 }
 
 .CodeMirror-lines {

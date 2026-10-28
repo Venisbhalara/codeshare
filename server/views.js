@@ -18,10 +18,10 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="light" />
+  <meta name="color-scheme" content="light dark" />
   <script>
     try {
-      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light";
+      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light dark";
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
@@ -34,7 +34,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.9" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.10" />
 </head>`;
 }
 
@@ -76,6 +76,18 @@ function renderNavbar({ me, codeshare = null }) {
     </div>
     <div class="topbar-right">
       ${codeshare ? `<div id="presence-strip" class="presence-strip"></div>` : ''}
+      <button type="button" id="theme-toggle-button" data-theme-toggle class="btn btn-glass btn-icon-responsive theme-switch-btn" title="Toggle Dark / Light Theme">
+        <span class="theme-switch-option if-light">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span class="btn-label" aria-hidden="true">Dark</span>
+          <span class="visually-hidden">Switch to dark theme</span>
+        </span>
+        <span class="theme-switch-option if-dark">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <span class="btn-label" aria-hidden="true">Light</span>
+          <span class="visually-hidden">Switch to light theme</span>
+        </span>
+      </button>
       ${
         codeshare
           ? `<button type="button" id="codeshare-download-button" class="btn btn-glass btn-icon-responsive" title="Download File" aria-label="Download File">
@@ -205,9 +217,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.9"></script>
-  <script src="/shared/ot.js?v=v3.40.9"></script>
-  <script src="/shared/catalog.js?v=v3.40.9"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.10"></script>
+  <script src="/shared/ot.js?v=v3.40.10"></script>
+  <script src="/shared/catalog.js?v=v3.40.10"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -215,7 +227,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.9"></script>
+  <script src="/-/js/app.js?v=v3.40.10"></script>
 </body>
 </html>`;
 }
@@ -340,9 +352,9 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
         <a href="/G8WoB4" class="btn btn-glass btn-pill" style="height:30px;">Open Live Room →</a>
       </div>
       <pre class="mono studio-preview-pre"><code><span style="color:var(--text-muted);">// Real-time Operational Transformation over WebSocket (codeshare-graphql-ws)</span>
-<span style="color:var(--accent-gold);font-weight:600;">async function</span> <span style="color:var(--accent-primary);font-weight:600;">collaborate</span>(roomId = <span style="color:#2D6A4F;">"G8WoB4"</span>) {
+<span style="color:var(--accent-gold);font-weight:600;">async function</span> <span style="color:var(--accent-primary);font-weight:600;">collaborate</span>(roomId = <span style="color:var(--accent-emerald);">"G8WoB4"</span>) {
   <span style="color:var(--accent-gold);font-weight:600;">const</span> session = <span style="color:var(--accent-gold);font-weight:600;">await</span> SessionHelper.getOrCreate();
-  <span style="color:var(--accent-gold);font-weight:600;">return</span> FirepadOT.connect({ roomId, checkpointInterval: <span style="color:#B85D3B;">100</span> });
+  <span style="color:var(--accent-gold);font-weight:600;">return</span> FirepadOT.connect({ roomId, checkpointInterval: <span style="color:var(--accent-gold);">100</span> });
 }</code></pre>
     </section>
 

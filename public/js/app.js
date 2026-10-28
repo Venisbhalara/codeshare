@@ -110,6 +110,37 @@
       }
     });
 
+    document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const systemScheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light';
+        let stored = null;
+        try {
+          stored = localStorage.getItem('color-scheme');
+        } catch (_) {}
+        const currentRendered =
+          stored === 'dark' || stored === 'light'
+            ? stored
+            : meta.content === 'dark' || meta.content === 'light'
+            ? meta.content
+            : systemScheme;
+        const target = currentRendered === 'dark' ? 'light' : 'dark';
+
+        if (target === systemScheme) {
+          try {
+            localStorage.removeItem('color-scheme');
+          } catch (_) {}
+          meta.content = 'light dark';
+        } else {
+          try {
+            localStorage.setItem('color-scheme', target);
+          } catch (_) {}
+          meta.content = target;
+        }
+      });
+    });
+
     document.querySelectorAll('[data-scheme-choice]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const choice = btn.getAttribute('data-scheme-choice');

@@ -14,6 +14,7 @@ const {
 const {
   executeGraphQLOperation,
   attachWebSocketHandler,
+  pubsub,
   formatMeNode,
   formatUserNode,
   formatCodeshareNode
@@ -100,7 +101,8 @@ app.post(['/-/api/graphql', '/api/graphql'], async (req, res) => {
 
 // 3. Landing Pages (`/`, `/interview`, `/teach`)
 app.get(['/', '/interview', '/teach'], (req, res) => {
-  const { user, apiHeaders } = getOrCreateSession(req, res);
+  const { user, session, apiHeaders } = getOrCreateSession(req, res);
+  if (session) db.setSessionActiveCodeshare(session.sid, null);
   const variant =
     req.path === '/interview'
       ? 'interview'
@@ -118,9 +120,10 @@ app.get(['/', '/interview', '/teach'], (req, res) => {
 
 // 4. Instant Room Creation (`GET /new` -> HTTP 302 Redirect to `/:codeshareId`)
 app.get('/new', (req, res) => {
-  const { user } = getOrCreateSession(req, res);
+  const { user, session } = getOrCreateSession(req, res);
   try {
     const cs = db.createCodeshare(user);
+    if (session) db.setSessionActiveCodeshare(session.sid, cs.id);
     res.redirect(302, `/${cs.slug || cs.id}`);
   } catch (err) {
     if (
@@ -140,6 +143,8 @@ app.get('/new', (req, res) => {
 
 // 4b. Join Existing Codeshare Route (`GET /join?room=...`)
 app.get('/join', (req, res) => {
+  const { session } = getOrCreateSession(req, res);
+  if (session) db.setSessionActiveCodeshare(session.sid, null);
   const rawInput = String((req.query && req.query.room) || '').trim();
   if (!rawInput) {
     res.redirect(302, '/');
@@ -171,7 +176,8 @@ app.get('/join', (req, res) => {
 
 // 5. Saved Codeshares Dashboard (`GET /codes`)
 app.get('/codes', (req, res) => {
-  const { user, apiHeaders } = getOrCreateSession(req, res);
+  const { user, session, apiHeaders } = getOrCreateSession(req, res);
+  if (session) db.setSessionActiveCodeshare(session.sid, null);
   if (user.anonymous) {
     res.redirect(302, '/login');
     return;
@@ -275,24 +281,69 @@ app.get('/_/admin', (req, res) => {
 
 // 10. Collaborative Room Route (`GET /:codeshareId`)
 app.get('/:codeshareId', (req, res) => {
-  const shortId = req.params.codeshareId;
-  if (shortId === 'favicon.ico') {
+  const rawShortId = String(req.params.codeshareId || '').trim();
+  if (rawShortId === 'favicon.ico') {
     res.status(204).end();
     return;
   }
 
+  const shortId = /^[a-zA-Z0-9_-]+$/.test(rawShortId)
+    ? rawShortId
+    : db.toUrlSlug(rawShortId, '');
+
   // Exact Relay ID length validation from pages/[codeshareId] (<= 127 chars)
   const encodedId = encodeRelayId('Codeshare', shortId);
-  if (encodedId.length > 127 || !/^[a-zA-Z0-9_-]+$/.test(shortId)) {
+  if (!shortId || encodedId.length > 127 || !/^[a-zA-Z0-9_-]+$/.test(shortId)) {
     res.status(400).send('Invalid URL');
     return;
   }
 
-  const { user, apiHeaders } = getOrCreateSession(req, res);
-  const cs = db.getOrCreateCodeshareByShortId(shortId, user);
+  const { user, session, apiHeaders } = getOrCreateSession(req, res);
+  let cs = db.getCodeshareByShortId(shortId);
+
+  // Two-way URL <-> Title Sync:
+  // 1) If the user is actively inside an editable room (`session.activeCodeshareId`) and changes
+  //    the URL in the browser address bar to a new custom slug, rename their active room's title & slug!
+  if (!cs && session && session.activeCodeshareId) {
+    const activeCs = db.getCodeshareByShortId(session.activeCodeshareId);
+    if (
+      activeCs &&
+      activeCs.id !== 'G8WoB4' &&
+      activeCs.createdByUserId === user.id &&
+      db.canUserEditCodeshare(activeCs, user.id)
+    ) {
+      try {
+        cs = db.updateCodeshare(activeCs.id, user.id, { title: rawShortId });
+        pubsub.publishCodeshareUpdated(cs.id);
+      } catch (_) {}
+    }
+  }
+
+  // 2) If `cs` already exists, but the URL slug entered in the address bar differs from `cs.slug`
+  //    (e.g. changing `/custom-title` back to `/originalId` or another slug for this room),
+  //    update `cs.title` and `cs.slug` so the room title reflects the URL change!
+  if (
+    cs &&
+    cs.slug &&
+    cs.slug.toLowerCase() !== shortId.toLowerCase() &&
+    db.canUserEditCodeshare(cs, user.id)
+  ) {
+    try {
+      cs = db.updateCodeshare(cs.id, user.id, { title: rawShortId });
+      pubsub.publishCodeshareUpdated(cs.id);
+    } catch (_) {}
+  }
+
+  if (!cs) {
+    cs = db.getOrCreateCodeshareByShortId(shortId, user);
+  }
   if (!cs) {
     res.status(404).send('Codeshare not found');
     return;
+  }
+
+  if (session) {
+    db.setSessionActiveCodeshare(session.sid, cs.id);
   }
 
   res.send(

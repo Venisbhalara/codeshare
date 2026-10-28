@@ -559,6 +559,9 @@
     let me = BOOTSTRAP.me;
     let codeshare = BOOTSTRAP.codeshare;
     const clientId = 'client-' + Math.random().toString(36).slice(2, 10);
+    const initialPathSlug = decodeURIComponent(
+      window.location.pathname.replace(/^\/+|\/+$/g, '')
+    ).trim();
 
     function toUrlSlug(title, fallbackId) {
       if (!title || typeof title !== 'string') return fallbackId;
@@ -579,9 +582,13 @@
         window.history.replaceState(null, '', newPath + window.location.search + window.location.hash);
       }
       const slugPreview = document.getElementById('live-slug-preview');
-      if (slugPreview) slugPreview.textContent = targetSlug;
+      if (slugPreview && document.activeElement !== slugPreview) {
+        slugPreview.textContent = targetSlug;
+      }
       const shareInput = document.getElementById('share-url-input');
-      if (shareInput) shareInput.value = window.location.origin + newPath;
+      if (shareInput && document.activeElement !== shareInput) {
+        shareInput.value = window.location.origin + newPath;
+      }
     }
 
     // Load anonymous user theme/keymap from localStorage if matching user:id
@@ -690,7 +697,9 @@
     applyTheme((me && me.settings && me.settings.theme) || 'eclipse');
     applyKeymap((me && me.settings && me.settings.keymap) || 'sublime');
     applyLanguageMode(codeshare.modeName || 'Plain Text');
-    syncBrowserUrlToSlug(codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId));
+    syncBrowserUrlToSlug(
+      initialPathSlug || codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId)
+    );
 
     // Read-Only 3-Second Cursor Reveal Trick (`la = 3e3` in pages_[codeshareId])
     let readOnlyCursorTimeout = null;
@@ -1310,6 +1319,60 @@
     }, 500);
 
     const titleInput = document.getElementById('codeshare-title-input');
+    const slugPreviewEl = document.getElementById('live-slug-preview');
+
+    function extractSlugFromUrlInput(rawVal) {
+      let cleaned = String(rawVal || '').trim();
+      try {
+        if (/^https?:\/\//i.test(cleaned)) {
+          const parsed = new URL(cleaned);
+          cleaned = decodeURIComponent(parsed.pathname.replace(/^\/+|\/+$/g, ''));
+        } else if (cleaned.includes('/')) {
+          const parts = cleaned.split('/').filter(Boolean);
+          cleaned = parts.length ? decodeURIComponent(parts[parts.length - 1]) : '';
+        }
+      } catch (_) {}
+      return cleaned;
+    }
+
+    function applyUrlSlugToTitle(rawUrlOrSlug, shouldPersist = true) {
+      if (!isEditable()) return;
+      const extracted = extractSlugFromUrlInput(rawUrlOrSlug);
+      const nextTitle = extracted || codeshare.shortId;
+      const nextSlug = toUrlSlug(nextTitle, codeshare.shortId);
+      codeshare.title = nextTitle;
+      codeshare.slug = nextSlug;
+      if (titleInput && document.activeElement !== titleInput) {
+        titleInput.value = nextTitle;
+      }
+      const navTitle = document.getElementById('navbar-room-title');
+      if (navTitle) navTitle.textContent = nextTitle;
+      document.title = `${nextTitle} - Codeshare`;
+      syncBrowserUrlToSlug(nextSlug);
+      if (shouldPersist) {
+        throttledUpdateCodeshare({ title: nextTitle });
+      }
+    }
+
+    // If browser URL path was changed directly in the address bar, sync URL -> Title on load
+    const bootstrapSlug = codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId);
+    if (
+      initialPathSlug &&
+      initialPathSlug.toLowerCase() !== String(bootstrapSlug).toLowerCase() &&
+      isEditable()
+    ) {
+      applyUrlSlugToTitle(initialPathSlug, true);
+    }
+
+    window.addEventListener('popstate', () => {
+      const pathSlug = decodeURIComponent(
+        window.location.pathname.replace(/^\/+|\/+$/g, '')
+      ).trim();
+      if (pathSlug) {
+        applyUrlSlugToTitle(pathSlug, true);
+      }
+    });
+
     if (titleInput) {
       titleInput.addEventListener('input', (e) => {
         const val = e.target.value;
@@ -1319,6 +1382,18 @@
         document.title = `${val || codeshare.shortId} - Codeshare`;
         syncBrowserUrlToSlug(toUrlSlug(val, codeshare.shortId));
         throttledUpdateCodeshare({ title: val });
+      });
+    }
+
+    if (slugPreviewEl) {
+      slugPreviewEl.addEventListener('input', () => {
+        applyUrlSlugToTitle(slugPreviewEl.textContent, true);
+      });
+      slugPreviewEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          slugPreviewEl.blur();
+        }
       });
     }
 
@@ -1445,6 +1520,12 @@
         if (shareUrlInput) shareUrlInput.value = window.location.href;
         shareDialog.showModal();
         if (shareUrlInput) shareUrlInput.select();
+      });
+    }
+
+    if (shareUrlInput) {
+      shareUrlInput.addEventListener('input', (e) => {
+        applyUrlSlugToTitle(e.target.value, true);
       });
     }
 

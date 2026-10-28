@@ -34,7 +34,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.7" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.8" />
 </head>`;
 }
 
@@ -120,8 +120,8 @@ function renderGlobalDialogs({ me, codeshare = null }) {
     <div class="field">
       <label for="share-url-input">Collaborative Room URL</label>
       <div class="share-url-row">
-        <input id="share-url-input" type="text" class="text-input mono" readonly value="${
-          codeshare ? `http://localhost:3000/${escapeHtml(codeshare.slug || codeshare.shortId)}` : ''
+        <input id="share-url-input" type="text" class="text-input mono" value="${
+          codeshare ? `/${escapeHtml(codeshare.slug || codeshare.shortId)}` : ''
         }" />
         <button type="button" id="copy-share-url-btn" class="btn btn-primary btn-pill">Copy Link</button>
       </div>
@@ -205,9 +205,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.7"></script>
-  <script src="/shared/ot.js?v=v3.40.7"></script>
-  <script src="/shared/catalog.js?v=v3.40.7"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.8"></script>
+  <script src="/shared/ot.js?v=v3.40.8"></script>
+  <script src="/shared/catalog.js?v=v3.40.8"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -215,7 +215,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.7"></script>
+  <script src="/-/js/app.js?v=v3.40.8"></script>
 </body>
 </html>`;
 }
@@ -300,7 +300,7 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
             value="${escapeHtml(codeshare.title || codeshare.shortId)}"
             ${editable ? '' : 'disabled'}
           />
-          <span class="room-url-preview">/<span id="live-slug-preview">${escapeHtml(currentSlug)}</span></span>
+          <span class="room-url-preview">/<span id="live-slug-preview" contenteditable="${editable ? 'true' : 'false'}" spellcheck="false" title="Edit URL slug">${escapeHtml(currentSlug)}</span></span>
         </div>
 
         <div class="field">

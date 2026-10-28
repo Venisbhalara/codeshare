@@ -214,7 +214,18 @@ async function runVerification() {
     assert.strictEqual(slugRoomRes.status, 200);
     assert(slugRoomRes.body.includes(customTitle));
     assert(slugRoomRes.body.includes(`"shortId":"${shortId}"`));
-    console.log(`✓ "Join Existing" (/join) & Dynamic Title-to-URL Slug Sync (/${expectedSlug} -> room ${shortId}) verified.`);
+
+    // Verify URL -> Title Sync (changing URL in browser address bar updates room Title)
+    const urlDrivenSlug = `Url-Driven-Title-${shortId}`;
+    const urlSyncRes = await httpRequest(port, {
+      path: `/${urlDrivenSlug}`,
+      method: 'GET',
+      headers: { Cookie: cookieHeader }
+    });
+    assert.strictEqual(urlSyncRes.status, 200);
+    assert(urlSyncRes.body.includes(`"shortId":"${shortId}"`));
+    assert(urlSyncRes.body.includes(`"title":"${urlDrivenSlug}"`));
+    console.log(`✓ Two-way Title <-> URL Sync (/${expectedSlug} & /${urlDrivenSlug} -> room ${shortId}) verified.`);
 
     wsA.close();
     wsB.close();

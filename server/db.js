@@ -301,6 +301,17 @@ class Database {
     }
   }
 
+  setSessionActiveCodeshare(sid, codeshareId) {
+    if (sid && this.state.sessions[sid]) {
+      this.state.sessions[sid].activeCodeshareId = codeshareId || null;
+      this.scheduleSave();
+    }
+  }
+
+  toUrlSlug(title, fallbackId) {
+    return toUrlSlug(title, fallbackId);
+  }
+
   deleteSession(sid) {
     if (sid && this.state.sessions[sid]) {
       delete this.state.sessions[sid];

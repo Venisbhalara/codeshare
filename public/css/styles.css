@@ -2076,6 +2076,268 @@ dialog,
   }
 }
 
+/* ==========================================================================
+   Instant QR Code Share & Aesthetic Code Screenshot Export Studio
+   ========================================================================== */
+.share-qr-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: light-dark(
+    rgba(246, 243, 236, 0.72),
+    rgba(18, 24, 34, 0.72)
+  );
+  border: 1px solid var(--border-hairline);
+}
+
+.share-qr-preview-wrap {
+  flex-shrink: 0;
+  padding: 8px;
+  border-radius: 14px;
+  background: #FFFDF9;
+  border: 1px solid rgba(28, 36, 32, 0.12);
+  box-shadow: 0 6px 18px rgba(27, 67, 50, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#share-qr-canvas {
+  display: block;
+  inline-size: 132px;
+  block-size: 132px;
+  border-radius: 6px;
+}
+
+.share-qr-details {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.share-qr-heading {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.share-qr-desc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.share-qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.share-qr-actions .btn {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 11.5px;
+  gap: 5px;
+}
+
+.share-snapshot-cta {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 2px 0 0;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.share-snapshot-cta:hover {
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.snapshot-dialog {
+  inline-size: min(760px, calc(100dvw - 24px));
+}
+
+.snapshot-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: light-dark(
+    rgba(246, 243, 236, 0.72),
+    rgba(18, 24, 34, 0.72)
+  );
+  border: 1px solid var(--border-hairline);
+}
+
+.snapshot-control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.snapshot-control-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.snapshot-swatch-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.snapshot-swatch {
+  appearance: none;
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  border: 2px solid light-dark(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.25));
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.snapshot-swatch:hover {
+  transform: scale(1.1);
+}
+
+.snapshot-swatch.active {
+  box-shadow:
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 4px var(--accent-primary);
+  transform: scale(1.08);
+}
+
+.snapshot-mini-select {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+}
+
+.snapshot-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.snapshot-toggle-pill input {
+  accent-color: var(--accent-primary);
+  margin: 0;
+}
+
+.snapshot-canvas-stage {
+  border-radius: 16px;
+  overflow: auto;
+  max-block-size: min(54dvh, 460px);
+  background: light-dark(rgba(28, 36, 32, 0.04), rgba(0, 0, 0, 0.28));
+  border: 1px solid var(--border-hairline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+#snapshot-preview-canvas {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.22);
+}
+
+.snapshot-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.snapshot-hint {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.snapshot-action-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 540px) {
+  .share-qr-card {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .share-qr-preview-wrap {
+    margin: 0 auto;
+  }
+
+  .share-qr-actions {
+    justify-content: center;
+  }
+
+  .share-snapshot-cta {
+    justify-content: center;
+  }
+
+  .snapshot-footer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .snapshot-action-btns {
+    inline-size: 100%;
+  }
+
+  .snapshot-action-btns .btn {
+    flex: 1;
+  }
+}
+
 dialog::backdrop,
 [popover]::backdrop {
   overflow: hidden;

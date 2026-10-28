@@ -2239,21 +2239,749 @@
       });
     }
 
-    // Share Modal & Copy URL
+    // =======================================================================
+    // 9b. Instant QR Code Share & Aesthetic Code Screenshot Export Studio
+    // =======================================================================
+    // ISO/IEC 18004 Reed-Solomon GF(256) QR Code Generator (Versions 1-8, Level L, Byte Mode)
+    const QR_GF_EXP = new Uint8Array(512);
+    const QR_GF_LOG = new Uint8Array(256);
+    (() => {
+      let x = 1;
+      for (let i = 0; i < 255; i++) {
+        QR_GF_EXP[i] = x;
+        QR_GF_LOG[x] = i;
+        x <<= 1;
+        if (x & 0x100) x ^= 0x11d;
+      }
+      for (let i = 255; i < 512; i++) {
+        QR_GF_EXP[i] = QR_GF_EXP[i - 255];
+      }
+    })();
+
+    function qrGfMul(a, b) {
+      return a === 0 || b === 0 ? 0 : QR_GF_EXP[QR_GF_LOG[a] + QR_GF_LOG[b]];
+    }
+
+    function qrRsEncode(dataBytes, ecLen) {
+      let gen = [1];
+      for (let i = 0; i < ecLen; i++) {
+        const next = new Array(gen.length + 1).fill(0);
+        const factor = QR_GF_EXP[i];
+        for (let j = 0; j < gen.length; j++) {
+          next[j] ^= gen[j];
+          next[j + 1] ^= qrGfMul(gen[j], factor);
+        }
+        gen = next;
+      }
+      const rem = new Uint8Array(ecLen);
+      for (let i = 0; i < dataBytes.length; i++) {
+        const factor = dataBytes[i] ^ rem[0];
+        for (let j = 0; j < ecLen - 1; j++) {
+          rem[j] = rem[j + 1] ^ qrGfMul(gen[j + 1], factor);
+        }
+        rem[ecLen - 1] = qrGfMul(gen[ecLen], factor);
+      }
+      return rem;
+    }
+
+    // Version specs for Level L: [totalDataCodewords, ecCodewordsPerBlock, numBlocks, alignmentCoords]
+    const QR_VERSION_L_SPECS = [
+      null,
+      [19, 7, 1, []],
+      [34, 10, 1, [6, 18]],
+      [55, 15, 1, [6, 22]],
+      [80, 20, 1, [6, 26]],
+      [108, 26, 1, [6, 30]],
+      [136, 18, 2, [6, 34]],
+      [156, 20, 2, [6, 22, 38]],
+      [194, 24, 2, [6, 24, 42]]
+    ];
+
+    function generateQrMatrix(text) {
+      const utf8 = new TextEncoder().encode(String(text || 'https://codeeflow.io').slice(0, 185));
+      let version = 1;
+      while (
+        version < 8 &&
+        utf8.length + 2 > QR_VERSION_L_SPECS[version][0]
+      ) {
+        version++;
+      }
+      const [totalDataCw, ecCwPerBlock, numBlocks, alignCoords] = QR_VERSION_L_SPECS[version];
+      const size = version * 4 + 17;
+
+      // Build bit stream: Mode 0100 (Byte), 8-bit length, payload, terminator, pad bytes
+      const bits = [];
+      const pushBits = (val, len) => {
+        for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+      };
+      pushBits(0b0100, 4);
+      pushBits(utf8.length, 8);
+      for (let i = 0; i < utf8.length; i++) pushBits(utf8[i], 8);
+      const maxBits = totalDataCw * 8;
+      for (let i = 0; i < 4 && bits.length < maxBits; i++) bits.push(0);
+      while (bits.length % 8 !== 0) bits.push(0);
+
+      const dataCw = new Uint8Array(totalDataCw);
+      for (let i = 0; i < bits.length / 8; i++) {
+        let byte = 0;
+        for (let b = 0; b < 8; b++) byte = (byte << 1) | bits[i * 8 + b];
+        dataCw[i] = byte;
+      }
+      const padBytes = [0xec, 0x11];
+      for (let i = bits.length / 8, p = 0; i < totalDataCw; i++, p ^= 1) {
+        dataCw[i] = padBytes[p];
+      }
+
+      // Split into blocks and compute Reed-Solomon EC codewords
+      const dataBlocks = [];
+      const ecBlocks = [];
+      const cwPerBlock = Math.floor(totalDataCw / numBlocks);
+      for (let b = 0; b < numBlocks; b++) {
+        const blockData = dataCw.slice(b * cwPerBlock, (b + 1) * cwPerBlock);
+        dataBlocks.push(blockData);
+        ecBlocks.push(qrRsEncode(blockData, ecCwPerBlock));
+      }
+
+      const finalCodewords = [];
+      for (let i = 0; i < cwPerBlock; i++) {
+        for (let b = 0; b < numBlocks; b++) finalCodewords.push(dataBlocks[b][i]);
+      }
+      for (let i = 0; i < ecCwPerBlock; i++) {
+        for (let b = 0; b < numBlocks; b++) finalCodewords.push(ecBlocks[b][i]);
+      }
+
+      const modules = Array.from({ length: size }, () => new Uint8Array(size));
+      const reserved = Array.from({ length: size }, () => new Uint8Array(size));
+
+      const setFunctionModule = (r, c, dark) => {
+        if (r < 0 || r >= size || c < 0 || c >= size) return;
+        modules[r][c] = dark ? 1 : 0;
+        reserved[r][c] = 1;
+      };
+
+      const placeFinder = (topR, leftC) => {
+        for (let dr = -1; dr <= 7; dr++) {
+          for (let dc = -1; dc <= 7; dc++) {
+            const isBorder = dr === -1 || dr === 7 || dc === -1 || dc === 7;
+            const isOuter = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+            const isInner = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+            setFunctionModule(topR + dr, leftC + dc, !isBorder && (isOuter || isInner));
+          }
+        }
+      };
+
+      placeFinder(0, 0);
+      placeFinder(0, size - 7);
+      placeFinder(size - 7, 0);
+
+      // Timing patterns
+      for (let i = 8; i < size - 8; i++) {
+        setFunctionModule(6, i, i % 2 === 0);
+        setFunctionModule(i, 6, i % 2 === 0);
+      }
+
+      // Alignment patterns
+      for (let i = 0; i < alignCoords.length; i++) {
+        for (let j = 0; j < alignCoords.length; j++) {
+          const ar = alignCoords[i];
+          const ac = alignCoords[j];
+          if (
+            (ar <= 8 && ac <= 8) ||
+            (ar <= 8 && ac >= size - 8) ||
+            (ar >= size - 8 && ac <= 8)
+          ) {
+            continue;
+          }
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const dist = Math.max(Math.abs(dr), Math.abs(dc));
+              setFunctionModule(ar + dr, ac + dc, dist !== 1);
+            }
+          }
+        }
+      }
+
+      // Reserve format info & dark module
+      for (let i = 0; i < 9; i++) {
+        if (i !== 6) {
+          reserved[8][i] = 1;
+          reserved[i][8] = 1;
+        }
+      }
+      for (let i = 0; i < 8; i++) {
+        reserved[8][size - 1 - i] = 1;
+        reserved[size - 1 - i][8] = 1;
+      }
+      setFunctionModule(size - 8, 8, true);
+
+      // Version 7+ 6x3 version info blocks
+      if (version >= 7) {
+        let rem = version;
+        for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+        const verBits = (version << 12) | rem;
+        for (let i = 0; i < 18; i++) {
+          const bit = (verBits >>> i) & 1;
+          const a = size - 11 + (i % 3);
+          const b = Math.floor(i / 3);
+          setFunctionModule(b, a, bit === 1);
+          setFunctionModule(a, b, bit === 1);
+        }
+      }
+
+      // Place data bits in upward/downward 2-column zig-zag
+      let bitIdx = 0;
+      const totalBits = finalCodewords.length * 8;
+      let upward = true;
+      for (let right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) right = 5;
+        for (let vert = 0; vert < size; vert++) {
+          const r = upward ? size - 1 - vert : vert;
+          for (let j = 0; j < 2; j++) {
+            const c = right - j;
+            if (!reserved[r][c]) {
+              let dark = false;
+              if (bitIdx < totalBits) {
+                const cw = finalCodewords[bitIdx >>> 3];
+                dark = ((cw >>> (7 - (bitIdx & 7))) & 1) === 1;
+                bitIdx++;
+              }
+              // Apply mask 0: (r + c) % 2 === 0
+              if ((r + c) % 2 === 0) dark = !dark;
+              modules[r][c] = dark ? 1 : 0;
+            }
+          }
+        }
+        upward = !upward;
+      }
+
+      // Write format info for Level L (01) and Mask 0 (000) -> 0x77c4
+      const formatBits = 0x77c4;
+      const formatCoords1 = [
+        [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
+        [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]
+      ];
+      for (let i = 0; i < 15; i++) {
+        const bit = (formatBits >>> i) & 1;
+        const [r1, c1] = formatCoords1[i];
+        modules[r1][c1] = bit;
+        if (i < 8) {
+          modules[8][size - 1 - i] = bit;
+        } else {
+          modules[size - 15 + i][8] = bit;
+        }
+      }
+
+      return { modules, size };
+    }
+
+    function roundRectPath(ctx, x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function drawQrMatrixToContext(ctx, text, x, y, boxSize, { fg = '#153226', bg = '#FFFDF9', showLogo = true } = {}) {
+      const { modules, size } = generateQrMatrix(text);
+      const quiet = 2;
+      const totalModules = size + quiet * 2;
+      const cell = boxSize / totalModules;
+
+      ctx.save();
+      roundRectPath(ctx, x, y, boxSize, boxSize, Math.max(6, boxSize * 0.06));
+      ctx.fillStyle = bg;
+      ctx.fill();
+
+      ctx.fillStyle = fg;
+      const centerMin = Math.floor(size / 2) - 2;
+      const centerMax = Math.ceil(size / 2) + 1;
+
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (!modules[r][c]) continue;
+          if (showLogo && r >= centerMin && r <= centerMax && c >= centerMin && c <= centerMax) {
+            continue;
+          }
+          const rx = x + (c + quiet) * cell;
+          const ry = y + (r + quiet) * cell;
+          ctx.fillRect(rx, ry, Math.ceil(cell), Math.ceil(cell));
+        }
+      }
+
+      if (showLogo) {
+        const badgeSize = cell * 4.4;
+        const bx = x + (boxSize - badgeSize) / 2;
+        const by = y + (boxSize - badgeSize) / 2;
+        roundRectPath(ctx, bx - 2, by - 2, badgeSize + 4, badgeSize + 4, badgeSize * 0.28);
+        ctx.fillStyle = bg;
+        ctx.fill();
+
+        roundRectPath(ctx, bx, by, badgeSize, badgeSize, badgeSize * 0.24);
+        ctx.fillStyle = '#1B4332';
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFDF9';
+        ctx.font = `700 ${Math.max(8, Math.round(badgeSize * 0.42))}px "JetBrains Mono", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('</>', bx + badgeSize / 2, by + badgeSize / 2 + 0.5);
+      }
+      ctx.restore();
+    }
+
+    function renderShareModalQr() {
+      const qrCanvas = document.getElementById('share-qr-canvas');
+      if (!qrCanvas) return;
+      const shareInput = document.getElementById('share-url-input');
+      const urlText = (shareInput && shareInput.value) || window.location.href;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const displaySize = 168;
+      qrCanvas.width = displaySize * dpr;
+      qrCanvas.height = displaySize * dpr;
+      const ctx = qrCanvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, displaySize, displaySize);
+      drawQrMatrixToContext(ctx, urlText, 0, 0, displaySize, {
+        fg: '#14281F',
+        bg: '#FFFDF9',
+        showLogo: true
+      });
+    }
+
+    function buildExportableQrCardCanvas() {
+      const shareInput = document.getElementById('share-url-input');
+      const urlText = (shareInput && shareInput.value) || window.location.href;
+      const out = document.createElement('canvas');
+      out.width = 640;
+      out.height = 740;
+      const ctx = out.getContext('2d');
+
+      const grad = ctx.createLinearGradient(0, 0, 640, 740);
+      grad.addColorStop(0, '#1B4332');
+      grad.addColorStop(1, '#0F291E');
+      roundRectPath(ctx, 0, 0, 640, 740, 32);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      roundRectPath(ctx, 48, 48, 544, 544, 24);
+      ctx.fillStyle = '#FFFDF9';
+      ctx.fill();
+      drawQrMatrixToContext(ctx, urlText, 68, 68, 504, {
+        fg: '#14281F',
+        bg: '#FFFDF9',
+        showLogo: true
+      });
+
+      ctx.fillStyle = '#FFFDF9';
+      ctx.font = '600 22px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`CodeeFlow Live Room • ${codeshare.title || codeshare.shortId}`, 320, 642);
+
+      ctx.fillStyle = 'rgba(255, 253, 249, 0.78)';
+      ctx.font = '500 15px "JetBrains Mono", monospace';
+      ctx.fillText(urlText.slice(0, 56), 320, 678);
+      return out;
+    }
+
+    async function copyCanvasToClipboard(canvasEl) {
+      if (!navigator.clipboard || typeof window.ClipboardItem === 'undefined') {
+        return false;
+      }
+      return new Promise((resolve) => {
+        canvasEl.toBlob(async (blob) => {
+          if (!blob) {
+            resolve(false);
+            return;
+          }
+          try {
+            await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+            resolve(true);
+          } catch (_) {
+            resolve(false);
+          }
+        }, 'image/png');
+      });
+    }
+
+    function downloadCanvasAsPng(canvasEl, filename) {
+      const dataUrl = canvasEl.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // Share Modal & Copy URL + Instant QR Code Actions
     const shareBtn = document.getElementById('codeshare-share-button');
     const shareDialog = document.getElementById('share-dialog');
     const shareUrlInput = document.getElementById('share-url-input');
     const copyShareUrlBtn = document.getElementById('copy-share-url-btn');
+    const downloadQrBtn = document.getElementById('download-qr-btn');
+    const copyQrBtn = document.getElementById('copy-qr-btn');
+    const copyQrLabel = document.getElementById('copy-qr-label');
+    const openSnapshotFromShareBtn = document.getElementById('open-snapshot-from-share-btn');
 
     if (shareBtn && shareDialog) {
       shareBtn.addEventListener('click', () => {
         if (shareUrlInput) shareUrlInput.value = window.location.href;
+        renderShareModalQr();
         shareDialog.showModal();
         if (shareUrlInput) shareUrlInput.select();
       });
     }
 
+    if (downloadQrBtn) {
+      downloadQrBtn.addEventListener('click', () => {
+        const cardCanvas = buildExportableQrCardCanvas();
+        downloadCanvasAsPng(cardCanvas, `codeeflow-qr-${codeshare.shortId}.png`);
+        showToast('Downloaded room QR code PNG!', { duration: 2400 });
+      });
+    }
+
+    if (copyQrBtn) {
+      copyQrBtn.addEventListener('click', async () => {
+        const cardCanvas = buildExportableQrCardCanvas();
+        const ok = await copyCanvasToClipboard(cardCanvas);
+        if (ok) {
+          if (copyQrLabel) {
+            copyQrLabel.textContent = 'Copied QR!';
+            setTimeout(() => {
+              copyQrLabel.textContent = 'Copy QR';
+            }, 2000);
+          }
+          showToast('Copied QR code image to clipboard!', { duration: 2400 });
+        } else {
+          downloadCanvasAsPng(cardCanvas, `codeeflow-qr-${codeshare.shortId}.png`);
+          showToast('Saved QR code PNG!', { duration: 2400 });
+        }
+      });
+    }
+
+    // Aesthetic Code Screenshot Export Studio (`#snapshot-dialog`)
+    const snapshotBtn = document.getElementById('codeshare-snapshot-button');
+    const snapshotDialog = document.getElementById('snapshot-dialog');
+    const snapshotCanvas = document.getElementById('snapshot-preview-canvas');
+    const snapshotBgSwatches = document.getElementById('snapshot-bg-swatches');
+    const snapshotWindowSelect = document.getElementById('snapshot-window-theme');
+    const snapshotPaddingSelect = document.getElementById('snapshot-padding-select');
+    const snapshotLinenosCheck = document.getElementById('snapshot-linenos-check');
+    const snapshotWatermarkCheck = document.getElementById('snapshot-watermark-check');
+    const snapshotCopyBtn = document.getElementById('snapshot-copy-btn');
+    const snapshotCopyLabel = document.getElementById('snapshot-copy-label');
+    const snapshotDownloadBtn = document.getElementById('snapshot-download-btn');
+    const snapshotScopeLabel = document.getElementById('snapshot-scope-label');
+
+    const SNAPSHOT_BG_PALETTES = {
+      emerald: ['#1B4332', '#0D261C', '#2D6A4F'],
+      sunset: ['#9A3412', '#431407', '#EA580C'],
+      midnight: ['#0F172A', '#090D16', '#334155'],
+      aurora: ['#064E3B', '#1E1B4B', '#4C1D95'],
+      sand: ['#F6F3EC', '#E5DEC9', '#D0C7B2']
+    };
+
+    let currentSnapshotBg = 'emerald';
+
+    function getSnapshotTokenColor(tokenType, isDarkWindow) {
+      if (!tokenType) return isDarkWindow ? '#ECF2F8' : '#1C2420';
+      const t = String(tokenType);
+      if (t.includes('comment')) return isDarkWindow ? '#7D8B99' : '#8A948E';
+      if (t.includes('keyword') || t.includes('operator')) return isDarkWindow ? '#F4A27E' : '#B85D3B';
+      if (t.includes('string')) return isDarkWindow ? '#6EE7B7' : '#2D6A4F';
+      if (t.includes('number') || t.includes('atom')) return isDarkWindow ? '#C084FC' : '#7E22CE';
+      if (t.includes('def') || t.includes('property')) return isDarkWindow ? '#93C5FD' : '#1B4332';
+      if (t.includes('variable-2') || t.includes('type') || t.includes('tag')) {
+        return isDarkWindow ? '#7DD3FC' : '#0F6CBD';
+      }
+      return isDarkWindow ? '#ECF2F8' : '#1C2420';
+    }
+
+    function renderSnapshotCanvas() {
+      if (!snapshotCanvas) return;
+      const isDarkWindow = !snapshotWindowSelect || snapshotWindowSelect.value !== 'light';
+      const pad = snapshotPaddingSelect ? parseInt(snapshotPaddingSelect.value, 10) || 44 : 44;
+      const showLineNumbers = !snapshotLinenosCheck || snapshotLinenosCheck.checked;
+      const showWatermark = !snapshotWatermarkCheck || snapshotWatermarkCheck.checked;
+
+      // Determine lines to render (selected lines, active #L permalink range, or active file up to 42 lines)
+      const totalLines = Math.max(1, cm.lineCount());
+      let startLine = 1;
+      let endLine = Math.min(totalLines, 42);
+      let scopeDesc = '';
+
+      if (cm.somethingSelected()) {
+        const range = getCurrentSelectionLineRange();
+        startLine = range.startLine;
+        endLine = Math.min(range.endLine, startLine + 44);
+        scopeDesc = `Selected lines #L${startLine}–L${endLine}`;
+      } else if (activePermalinkRange) {
+        startLine = Math.min(totalLines, Math.max(1, activePermalinkRange.startLine));
+        endLine = Math.min(totalLines, Math.max(startLine, activePermalinkRange.endLine));
+        scopeDesc = `Permalink range #L${startLine}–L${endLine}`;
+      } else {
+        const activeFile = getActiveFile();
+        scopeDesc = `Active file: ${(activeFile && activeFile.name) || 'main.txt'} (${endLine} ${
+          endLine === 1 ? 'line' : 'lines'
+        })`;
+      }
+      if (snapshotScopeLabel) {
+        snapshotScopeLabel.textContent = scopeDesc;
+      }
+
+      const lineCount = Math.max(1, endLine - startLine + 1);
+      const fontSize = 14;
+      const lineHeight = 24;
+      const headerHeight = 46;
+      const footerHeight = showWatermark ? 76 : 20;
+      const codeTopPad = 18;
+      const gutterWidth = showLineNumbers ? 52 : 24;
+
+      // Measure max line width to size the card cleanly
+      const measureCtx = snapshotCanvas.getContext('2d');
+      measureCtx.font = `500 ${fontSize}px "JetBrains Mono", monospace`;
+      let maxTextWidth = 420;
+      for (let ln = startLine; ln <= endLine; ln++) {
+        const rawLine = (cm.getLine(ln - 1) || '').replace(/\t/g, '  ').slice(0, 110);
+        const w = measureCtx.measureText(rawLine || ' ').width;
+        if (w > maxTextWidth) maxTextWidth = w;
+      }
+
+      const cardWidth = Math.min(980, Math.max(540, Math.ceil(gutterWidth + maxTextWidth + 44)));
+      const cardHeight = headerHeight + codeTopPad + lineCount * lineHeight + footerHeight;
+      const totalWidth = cardWidth + pad * 2;
+      const totalHeight = cardHeight + pad * 2;
+
+      const scale = 2; // 2x Retina export
+      snapshotCanvas.width = totalWidth * scale;
+      snapshotCanvas.height = totalHeight * scale;
+      const ctx = snapshotCanvas.getContext('2d');
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+      // 1. Draw Studio Backdrop Gradient
+      const [c1, c2, c3] = SNAPSHOT_BG_PALETTES[currentSnapshotBg] || SNAPSHOT_BG_PALETTES.emerald;
+      const bgGrad = ctx.createLinearGradient(0, 0, totalWidth, totalHeight);
+      bgGrad.addColorStop(0, c1);
+      bgGrad.addColorStop(0.55, c2);
+      bgGrad.addColorStop(1, c3);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+      // Subtle radial studio glow
+      const glow = ctx.createRadialGradient(
+        totalWidth * 0.2,
+        totalHeight * 0.15,
+        10,
+        totalWidth * 0.5,
+        totalHeight * 0.5,
+        totalWidth * 0.85
+      );
+      glow.addColorStop(0, 'rgba(255, 253, 249, 0.12)');
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+      // 2. Draw Elevated Code Window Card
+      ctx.save();
+      ctx.shadowColor = 'rgba(8, 15, 12, 0.42)';
+      ctx.shadowBlur = 36;
+      ctx.shadowOffsetY = 16;
+      roundRectPath(ctx, pad, pad, cardWidth, cardHeight, 16);
+      ctx.fillStyle = isDarkWindow ? '#121820' : '#FFFDF9';
+      ctx.fill();
+      ctx.restore();
+
+      // Card hairline border
+      roundRectPath(ctx, pad, pad, cardWidth, cardHeight, 16);
+      ctx.strokeStyle = isDarkWindow ? 'rgba(255, 255, 255, 0.12)' : 'rgba(28, 36, 32, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // 3. Window Traffic Lights & File Tab Title Bar
+      const dotY = pad + 23;
+      const dotColors = ['#FF5F56', '#FFBD2E', '#27C93F'];
+      dotColors.forEach((col, i) => {
+        ctx.beginPath();
+        ctx.arc(pad + 22 + i * 18, dotY, 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.fill();
+      });
+
+      const activeFile = getActiveFile();
+      const fileTitle = (activeFile && activeFile.name) || 'main.txt';
+      const modeLabel = (activeFile && activeFile.modeName) || codeshare.modeName || 'Plain Text';
+      ctx.fillStyle = isDarkWindow ? '#9BA8B8' : '#526058';
+      ctx.font = '600 12.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${fileTitle} — ${codeshare.title || codeshare.shortId}`, pad + cardWidth / 2, dotY);
+
+      ctx.fillStyle = isDarkWindow ? 'rgba(244, 162, 126, 0.9)' : '#B85D3B';
+      ctx.font = '600 11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(modeLabel, pad + cardWidth - 18, dotY);
+
+      // Header divider line
+      ctx.beginPath();
+      ctx.moveTo(pad, pad + headerHeight);
+      ctx.lineTo(pad + cardWidth, pad + headerHeight);
+      ctx.strokeStyle = isDarkWindow ? 'rgba(255, 255, 255, 0.07)' : 'rgba(28, 36, 32, 0.08)';
+      ctx.stroke();
+
+      // 4. Render Code Lines with Real CodeMirror Syntax Tokens
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      const codeStartY = pad + headerHeight + codeTopPad + 15;
+
+      const isCompletelyEmpty = cm.getValue().trim().length === 0;
+      if (isCompletelyEmpty) {
+        ctx.font = `italic ${fontSize}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = isDarkWindow ? '#637282' : '#8A948E';
+        ctx.fillText('// Write or paste code in CodeeFlow to export...', pad + gutterWidth, codeStartY);
+      } else {
+        for (let idx = 0; idx < lineCount; idx++) {
+          const ln = startLine + idx;
+          const y = codeStartY + idx * lineHeight;
+
+          if (showLineNumbers) {
+            ctx.font = `500 12px "JetBrains Mono", monospace`;
+            ctx.fillStyle = isDarkWindow ? '#566575' : '#8A948E';
+            ctx.textAlign = 'right';
+            ctx.fillText(String(ln), pad + gutterWidth - 16, y);
+            ctx.textAlign = 'left';
+          }
+
+          ctx.font = `500 ${fontSize}px "JetBrains Mono", monospace`;
+          let curX = pad + gutterWidth;
+          const maxX = pad + cardWidth - 22;
+
+          let tokens = [];
+          try {
+            tokens = cm.getLineTokens(ln - 1) || [];
+          } catch (_) {}
+
+          if (!tokens.length) {
+            const raw = (cm.getLine(ln - 1) || '').replace(/\t/g, '  ').slice(0, 110);
+            ctx.fillStyle = isDarkWindow ? '#ECF2F8' : '#1C2420';
+            ctx.fillText(raw, curX, y);
+          } else {
+            for (const tok of tokens) {
+              const textSeg = (tok.string || '').replace(/\t/g, '  ');
+              if (!textSeg || curX >= maxX) continue;
+              ctx.fillStyle = getSnapshotTokenColor(tok.type, isDarkWindow);
+              ctx.fillText(textSeg, curX, y);
+              curX += ctx.measureText(textSeg).width;
+            }
+          }
+        }
+      }
+
+      // 5. Optional Brand Watermark + Scannable Mini Room QR Code
+      if (showWatermark) {
+        const footTop = pad + cardHeight - footerHeight;
+        ctx.beginPath();
+        ctx.moveTo(pad + 18, footTop + 8);
+        ctx.lineTo(pad + cardWidth - 18, footTop + 8);
+        ctx.strokeStyle = isDarkWindow ? 'rgba(255, 255, 255, 0.07)' : 'rgba(28, 36, 32, 0.08)';
+        ctx.stroke();
+
+        ctx.fillStyle = isDarkWindow ? '#ECF2F8' : '#1C2420';
+        ctx.font = '700 13px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('CodeeFlow • Live Collaborative Studio', pad + 20, footTop + 34);
+
+        const roomUrl = window.location.href;
+        ctx.fillStyle = isDarkWindow ? '#8D9AA8' : '#526058';
+        ctx.font = '500 11.5px "JetBrains Mono", monospace';
+        ctx.fillText(roomUrl.slice(0, 62), pad + 20, footTop + 54);
+
+        // Mini scannable QR code on the right of the footer
+        drawQrMatrixToContext(ctx, roomUrl, pad + cardWidth - 68, footTop + 14, 50, {
+          fg: '#14281F',
+          bg: '#FFFDF9',
+          showLogo: false
+        });
+      }
+    }
+
+    function openSnapshotStudio() {
+      if (!snapshotDialog) return;
+      if (shareDialog && shareDialog.open) closeTopLayer(shareDialog);
+      renderSnapshotCanvas();
+      snapshotDialog.showModal();
+    }
+
+    if (snapshotBtn) {
+      snapshotBtn.addEventListener('click', openSnapshotStudio);
+    }
+
+    if (openSnapshotFromShareBtn) {
+      openSnapshotFromShareBtn.addEventListener('click', openSnapshotStudio);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        openSnapshotStudio();
+      }
+    });
+
+    if (snapshotBgSwatches) {
+      snapshotBgSwatches.addEventListener('click', (e) => {
+        const swatch = e.target.closest('[data-bg-theme]');
+        if (!swatch) return;
+        currentSnapshotBg = swatch.getAttribute('data-bg-theme') || 'emerald';
+        snapshotBgSwatches.querySelectorAll('.snapshot-swatch').forEach((el) => {
+          el.classList.toggle('active', el === swatch);
+        });
+        renderSnapshotCanvas();
+      });
+    }
+
+    [snapshotWindowSelect, snapshotPaddingSelect, snapshotLinenosCheck, snapshotWatermarkCheck].forEach(
+      (ctrl) => {
+        if (ctrl) ctrl.addEventListener('change', renderSnapshotCanvas);
+      }
+    );
+
+    if (snapshotDownloadBtn && snapshotCanvas) {
+      snapshotDownloadBtn.addEventListener('click', () => {
+        const activeFile = getActiveFile();
+        const stem = ((activeFile && activeFile.name) || codeshare.shortId || 'codeeflow').replace(
+          /[^a-zA-Z0-9._-]/g,
+          '-'
+        );
+        downloadCanvasAsPng(snapshotCanvas, `codeeflow-${stem}.png`);
+        showToast('Downloaded high-resolution code screenshot!', { duration: 2400 });
+      });
+    }
+
+    if (snapshotCopyBtn && snapshotCanvas) {
+      snapshotCopyBtn.addEventListener('click', async () => {
+        const ok = await copyCanvasToClipboard(snapshotCanvas);
+        if (ok) {
+          if (snapshotCopyLabel) {
+            snapshotCopyLabel.textContent = 'Copied PNG!';
+            setTimeout(() => {
+              snapshotCopyLabel.textContent = 'Copy Image';
+            }, 2000);
+          }
+          showToast('Copied code screenshot to clipboard!', { duration: 2400 });
+        } else {
+          downloadCanvasAsPng(snapshotCanvas, `codeeflow-${codeshare.shortId}.png`);
+          showToast('Downloaded code screenshot PNG!', { duration: 2400 });
+        }
+      });
+    }
+
     if (shareUrlInput) {
+      shareUrlInput.addEventListener('input', () => {
+        renderShareModalQr();
+      });
       shareUrlInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

@@ -205,21 +205,30 @@ function browserCompatibilityGate(req, res, next) {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Codeshare - Unsupported Browser</title>
+    <title>CodeFlow - Unsupported Browser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.0" />
+    <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.11" />
+    <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.11" />
   </head>
   <body class="gate-body">
     <main class="gate-card">
-      <div class="brand-mark">CS</div>
+      <div class="brand-mark" aria-hidden="true">
+        <svg class="brand-logo-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M7.8 7.5L3.5 12L7.8 16.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M16.2 7.5L20.5 12L16.2 16.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M9.8 16.8C10.5 11.8 13.5 12.2 14.2 7.2" stroke="#F4A27E" stroke-width="2.2" stroke-linecap="round" />
+          <circle cx="9.8" cy="16.8" r="1.35" fill="#F4A27E" />
+          <circle cx="14.2" cy="7.2" r="1.35" fill="#FFE3CC" />
+        </svg>
+      </div>
       <h1 class="serif-display">Please update your browser.</h1>
       <p class="gate-text">
         In order to give you the best possible experience closely matched to your text editor,
-        Codeshare uses cutting edge browser technology and requires an up to date browser.
+        CodeFlow uses cutting edge browser technology and requires an up to date browser.
       </p>
       <p class="gate-subtext">
         Still having trouble?
-        <a id="use-anyway-button" href="javascript:void(0)">Ignore and use Codeshare anyway.</a>
+        <a id="use-anyway-button" href="javascript:void(0)">Ignore and use CodeFlow anyway.</a>
       </p>
     </main>
     <script>

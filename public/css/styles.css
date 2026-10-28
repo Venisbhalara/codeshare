@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Codeshare — Warm Alabaster, Botanical Forest & Terracotta Studio Theme
+   CodeFlow — Warm Alabaster, Botanical Forest & Terracotta Studio Theme
    Typography: Instrument Serif (Display) + Plus Jakarta Sans (UI) + JetBrains Mono (Code)
    ========================================================================== */
 
@@ -432,19 +432,28 @@ a {
   align-items: center;
   gap: 10px;
   user-select: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .brand-link:hover {
-  opacity: 0.88;
+  opacity: 0.96;
 }
 
 .brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: linear-gradient(145deg, var(--accent-primary), var(--accent-emerald));
-  color: var(--accent-primary-fg);
+  --brand-wave-color: #F4A27E;
+  --brand-node-top: #FFE3CC;
+  width: 32px;
+  height: 32px;
+  border-radius: 9.5px;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(244, 162, 126, 0.28) 0%, transparent 55%),
+    linear-gradient(
+      145deg,
+      light-dark(#1B4332, #143628) 0%,
+      light-dark(#2D6A4F, #235E45) 100%
+    );
+  color: #FFFDF9;
+  border: 1px solid light-dark(rgba(255, 255, 255, 0.22), rgba(52, 211, 153, 0.36));
   font-family: var(--font-display);
   font-size: 18px;
   font-style: italic;
@@ -454,8 +463,37 @@ a {
   letter-spacing: -0.03em;
   flex-shrink: 0;
   box-shadow:
-    0 3px 10px rgba(27, 67, 50, 0.22),
+    0 4px 12px light-dark(rgba(27, 67, 50, 0.24), rgba(0, 0, 0, 0.42)),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
+}
+
+.brand-link:hover .brand-mark {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow:
+    0 6px 16px light-dark(rgba(27, 67, 50, 0.32), rgba(52, 211, 153, 0.22)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.brand-logo-svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  overflow: visible;
+  flex: none;
+  pointer-events: none;
+}
+
+.brand-bracket {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.brand-link:hover .brand-bracket-left {
+  transform: translateX(-0.6px);
+}
+
+.brand-link:hover .brand-bracket-right {
+  transform: translateX(0.6px);
 }
 
 .brand-name {
@@ -464,6 +502,14 @@ a {
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.brand-name-accent {
+  font-style: italic;
+  color: var(--accent-primary);
+  margin-left: 0.5px;
 }
 
 .brand-badge {

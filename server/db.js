@@ -174,7 +174,7 @@ class Database {
     if (!this.state.codeshares['G8WoB4']) {
       const now = new Date().toISOString();
       const initialCode = [
-        '// Welcome to Codeshare — Real-Time Collaborative Code Editor',
+        '// Welcome to CodeFlow — Real-Time Collaborative Code Editor',
         '// Share this URL with anyone to pair program, interview, or debug live.',
         '',
         'async function streamFibonacci(limit = 10) {',
@@ -225,6 +225,18 @@ class Database {
         updatedAt: now
       };
       this.saveSync();
+    } else if (
+      this.state.codeHistories['G8WoB4'] &&
+      this.state.codeHistories['G8WoB4'].length === 1 &&
+      typeof this.state.codeHistories['G8WoB4'][0].value === 'string' &&
+      this.state.codeHistories['G8WoB4'][0].value.includes('Welcome to Codeshare')
+    ) {
+      this.state.codeHistories['G8WoB4'][0].value =
+        this.state.codeHistories['G8WoB4'][0].value.replace(
+          'Welcome to Codeshare',
+          'Welcome to CodeFlow'
+        );
+      this.saveSync();
     }
   }
 
@@ -267,9 +279,14 @@ class Database {
   getUserByEmail(email) {
     if (!email) return null;
     const normalized = String(email).trim().toLowerCase();
+    const lookupEmail =
+      normalized === 'demo@codeflow.io' ? 'demo@codeshare.io' : normalized;
     return (
       Object.values(this.state.users).find(
-        (u) => !u.anonymous && u.email && u.email.toLowerCase() === normalized
+        (u) =>
+          !u.anonymous &&
+          u.email &&
+          (u.email.toLowerCase() === normalized || u.email.toLowerCase() === lookupEmail)
       ) || null
     );
   }

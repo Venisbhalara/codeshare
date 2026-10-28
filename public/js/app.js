@@ -1261,7 +1261,7 @@
       }
       const navTitle = document.getElementById('navbar-room-title');
       if (navTitle) navTitle.textContent = codeshare.title || codeshare.shortId;
-      document.title = `${codeshare.title || codeshare.shortId} - Codeshare`;
+      document.title = `${codeshare.title || codeshare.shortId} - CodeFlow`;
       syncBrowserUrlToSlug(codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId));
 
       const modeSelect = document.getElementById('codeshare-mode-select');
@@ -1371,7 +1371,7 @@
       }
       const navTitle = document.getElementById('navbar-room-title');
       if (navTitle) navTitle.textContent = nextTitle;
-      document.title = `${nextTitle} - Codeshare`;
+      document.title = `${nextTitle} - CodeFlow`;
       syncBrowserUrlToSlug(nextSlug);
       if (shouldPersist) {
         throttledUpdateCodeshare({ title: nextTitle });
@@ -1403,7 +1403,7 @@
         codeshare.title = val;
         const navTitle = document.getElementById('navbar-room-title');
         if (navTitle) navTitle.textContent = val || codeshare.shortId;
-        document.title = `${val || codeshare.shortId} - Codeshare`;
+        document.title = `${val || codeshare.shortId} - CodeFlow`;
         syncBrowserUrlToSlug(toUrlSlug(val, codeshare.shortId));
         throttledUpdateCodeshare({ title: val });
       });
@@ -1519,7 +1519,7 @@
         const modeEntry =
           Catalog.MODES_BY_NAME[codeshare.modeName] || Catalog.MODES_BY_NAME['Plain Text'];
         const ext = (modeEntry.ext && modeEntry.ext[0]) || 'txt';
-        const baseName = (codeshare.title || codeshare.shortId || 'codeshare')
+        const baseName = (codeshare.title || codeshare.shortId || 'codeflow')
           .replace(/[^a-zA-Z0-9_-]/g, '_');
         const blob = new Blob([cm.getValue()], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -1601,7 +1601,7 @@
             }`,
             variables: { input: { id: codeshare.id, save: true } }
           });
-          showToast('Codeshare saved to your account.', { duration: 3500 });
+          showToast('CodeFlow saved to your account.', { duration: 3500 });
           const expEl = document.getElementById('expire-time');
           if (expEl) expEl.remove();
         } else if (authDialog) {
@@ -1643,7 +1643,7 @@
         })
         .catch(() => {
           // Stage 3 SimpleSadFace fallback
-          sponsorRoot.innerHTML = `<span>Please don't block our ads :( — Ad sponsors keep Codeshare free.</span>
+          sponsorRoot.innerHTML = `<span>Please don't block our ads :( — Ad sponsors keep CodeFlow free.</span>
             <button type="button" class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;" id="hide-ads-btn">Hide Ads</button>`;
         });
     }
@@ -1810,7 +1810,7 @@
               input: { stripePaymentMethodId: 'pm_card_visa_4242' }
             }
           });
-          showToast('Welcome to Codeshare Pro!', { duration: 3000 });
+          showToast('Welcome to CodeFlow Pro!', { duration: 3000 });
           setTimeout(() => window.location.reload(), 600);
         } catch (err) {
           if (btn) {
@@ -1822,7 +1822,7 @@
       });
     }
 
-    // Saved Codeshares Deletion on `/codes` (`CodeshareDeleteButton_deleteCodeshare_Mutation`)
+    // Saved CodeFlows Deletion on `/codes` (`CodeshareDeleteButton_deleteCodeshare_Mutation`)
     document.querySelectorAll('[data-delete-codeshare]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const codeshareId = btn.getAttribute('data-delete-codeshare');
@@ -1837,10 +1837,10 @@
             variables: { input: { id: codeshareId } }
           });
           if (row) row.remove();
-          showToast('Codeshare deleted.', { duration: 2500 });
+          showToast('CodeFlow deleted.', { duration: 2500 });
         } catch (err) {
           if (row) row.style.opacity = '1';
-          showToast(err.message || 'Could not delete codeshare.', { duration: 3500 });
+          showToast(err.message || 'Could not delete CodeFlow.', { duration: 3500 });
         }
       });
     });
@@ -1868,7 +1868,7 @@
       });
     }
 
-    // Default Codeshare Settings Form on `/settings` (`DefaultCodeshareSettingsForm_updateMe_Mutation`)
+    // Default CodeFlow Settings Form on `/settings` (`DefaultCodeshareSettingsForm_updateMe_Mutation`)
     const defaultSettingsForm = document.getElementById('default-codeshare-settings-form');
     if (defaultSettingsForm) {
       defaultSettingsForm.addEventListener('submit', async (e) => {
@@ -1889,7 +1889,7 @@
               }
             }
           });
-          showToast('Default codeshare settings saved.', { duration: 3000 });
+          showToast('Default CodeFlow settings saved.', { duration: 3000 });
         } catch (err) {
           showToast(err.message || 'Could not save default settings.', { duration: 3500 });
         }
@@ -1900,7 +1900,7 @@
     const deleteAccountBtn = document.getElementById('delete-account-btn');
     if (deleteAccountBtn) {
       deleteAccountBtn.addEventListener('click', async () => {
-        if (!window.confirm('Are you sure you want to permanently delete your account and all saved codeshares?')) {
+        if (!window.confirm('Are you sure you want to permanently delete your account and all saved CodeFlows?')) {
           return;
         }
         await gqlClient.request({

@@ -78,7 +78,7 @@ app.get('/-/sp.json', (req, res) => {
       {
         statlink: '/plans',
         description:
-          'Codeshare Pro — Unlock View-Only rooms, unlimited saved codeshares & zero ads.',
+          'CodeFlow Pro — Unlock View-Only rooms, unlimited saved CodeFlows & zero ads.',
         smallImage: '',
         pixel: ''
       }
@@ -267,7 +267,7 @@ app.get('/logout', (req, res) => {
 // 9. Internal Admin Dashboard (`GET /_/admin`)
 app.get('/_/admin', (req, res) => {
   const { user, apiHeaders } = getOrCreateSession(req, res);
-  const searchedEmail = req.query.email || 'demo@codeshare.io';
+  const searchedEmail = req.query.email || 'demo@codeflow.io';
   const foundUser = db.getUserByEmail(searchedEmail);
   res.send(
     renderAdminPage({
@@ -283,7 +283,7 @@ app.get('/_/admin', (req, res) => {
 app.get('/:codeshareId', (req, res) => {
   const rawShortId = String(req.params.codeshareId || '').trim();
   if (rawShortId === 'favicon.ico') {
-    res.status(204).end();
+    res.redirect(302, '/shared/logo.svg');
     return;
   }
 

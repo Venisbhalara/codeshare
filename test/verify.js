@@ -169,12 +169,12 @@ async function runVerification() {
     );
     console.log('✓ Real-time WebSocket OT mutation & subscription broadcast verified.');
 
-    // 3d. Verify CodeFlow Branding, Custom SVG Logo & Home Page "Join Existing" (/join?room=...)
+    // 3d. Verify CodeeFlow Branding, Custom SVG Logo & Home Page "Join Existing" (/join?room=...)
     const homeRes = await httpRequest(port, { path: '/', method: 'GET' });
     assert.strictEqual(homeRes.status, 200);
-    assert(homeRes.body.includes('Code<span class="brand-name-accent">Flow</span>'));
+    assert(homeRes.body.includes('Codee<span class="brand-name-accent">Flow</span>'));
     assert(homeRes.body.includes('class="brand-logo-svg"'));
-    assert(homeRes.body.includes('codeflow.io /'));
+    assert(homeRes.body.includes('codeeflow.io /'));
 
     const logoRes = await httpRequest(port, { path: '/shared/logo.svg', method: 'GET' });
     assert.strictEqual(logoRes.status, 200);

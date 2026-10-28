@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.13" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.14" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.13" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.14" />
 </head>`;
 }
 
@@ -48,7 +48,7 @@ function renderBrandLogo() {
       <circle class="brand-flow-node" cx="9.8" cy="16.8" r="1.35" fill="var(--brand-wave-color, #F4A27E)" />
       <circle class="brand-flow-node" cx="14.2" cy="7.2" r="1.35" fill="var(--brand-node-top, #FFE3CC)" />
     </svg>
-  </span><span class="brand-name">Code<span class="brand-name-accent">Flow</span></span>`;
+  </span><span class="brand-name">Codee<span class="brand-name-accent">Flow</span></span>`;
 }
 
 function renderNavbar({ me, codeshare = null }) {
@@ -69,7 +69,7 @@ function renderNavbar({ me, codeshare = null }) {
 
   return `<header class="topbar ${codeshare ? 'topbar-workspace' : 'topbar-floating'}">
     <div class="topbar-left">
-      <a href="/" class="brand-link" aria-label="CodeFlow Home">
+      <a href="/" class="brand-link" aria-label="CodeeFlow Home">
         ${
           creatorCompanyImage
             ? `<img src="${escapeHtml(creatorCompanyImage)}" alt="Brand Logo" style="height:26px;border-radius:6px;" />`
@@ -137,7 +137,7 @@ function renderGlobalDialogs({ me, codeshare = null }) {
   <dialog id="share-dialog" closedby="any" data-lenis-prevent aria-labelledby="share-dialog-title">
     <div class="dialog-header">
       <div>
-        <h2 id="share-dialog-title" class="dialog-title">Share this CodeFlow</h2>
+        <h2 id="share-dialog-title" class="dialog-title">Share this CodeeFlow</h2>
         <p class="dialog-subtitle">Anyone with this link will see code as it is typed in real time.</p>
       </div>
       <button type="button" data-close-dialog class="btn btn-ghost" aria-label="Close">✕</button>
@@ -160,22 +160,22 @@ function renderGlobalDialogs({ me, codeshare = null }) {
     </label>
   </dialog>
 
-  <!-- CodeFlow Pro Checkout Modal (<dialog closedby="any">) -->
+  <!-- CodeeFlow Pro Checkout Modal (<dialog closedby="any">) -->
   <dialog id="pro-dialog" closedby="any" data-lenis-prevent aria-labelledby="pro-dialog-title">
     <div class="dialog-header">
       <div>
-        <h2 id="pro-dialog-title" class="dialog-title">Upgrade to <em>CodeFlow Pro</em></h2>
+        <h2 id="pro-dialog-title" class="dialog-title">Upgrade to <em>CodeeFlow Pro</em></h2>
         <p class="dialog-subtitle">Unlock View-Only permissions, unlimited saved rooms, custom defaults, and zero ads.</p>
       </div>
       <button type="button" data-close-dialog class="btn btn-ghost" aria-label="Close">✕</button>
     </div>
     <div class="minimal-card" style="padding:18px;margin-bottom:18px;background:var(--bg-subtle);">
       <div style="display:flex;justify-content:space-between;align-items:baseline;">
-        <span class="serif-display" style="font-size:24px;">CodeFlow Pro</span>
+        <span class="serif-display" style="font-size:24px;">CodeeFlow Pro</span>
         <span class="serif-display" style="font-size:30px;">$49 <span style="font-family:var(--font-sans);font-size:12px;color:var(--text-secondary);">/ month</span></span>
       </div>
       <ul class="plan-features" style="margin:12px 0 0;">
-        <li>✓ Unlimited Saved CodeFlows (Free limit is 20)</li>
+        <li>✓ Unlimited Saved CodeeFlows (Free limit is 20)</li>
         <li>✓ View-Only Mode access control for interviews & lectures</li>
         <li>✓ Zero advertisements for you and everyone in your rooms</li>
         <li>✓ Custom Default Language, Tab Size & Company Navbar Logo</li>
@@ -194,8 +194,8 @@ function renderGlobalDialogs({ me, codeshare = null }) {
   <dialog id="auth-dialog" closedby="any" data-lenis-prevent aria-labelledby="auth-dialog-title">
     <div class="dialog-header">
       <div>
-        <h2 id="auth-dialog-title" class="dialog-title">Save this CodeFlow</h2>
-        <p class="dialog-subtitle">Create a free account to keep this CodeFlow permanently (anonymous rooms expire in 24 hours).</p>
+        <h2 id="auth-dialog-title" class="dialog-title">Save this CodeeFlow</h2>
+        <p class="dialog-subtitle">Create a free account to keep this CodeeFlow permanently (anonymous rooms expire in 24 hours).</p>
       </div>
       <button type="button" data-close-dialog class="btn btn-ghost" aria-label="Close">✕</button>
     </div>
@@ -215,7 +215,7 @@ function renderGlobalDialogs({ me, codeshare = null }) {
         <input id="modal-reg-pass" name="password" type="password" class="text-input" autocomplete="new-password" enterkeyhint="done" required minlength="6" aria-errormessage="modal-pass-err" />
         <div id="modal-pass-err" class="error-msg">Password must be at least 6 characters.</div>
       </div>
-      <button type="submit" class="btn btn-primary" style="width:100%;height:38px;margin-top:4px;">Sign Up & Save CodeFlow</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;height:38px;margin-top:4px;">Sign Up & Save CodeeFlow</button>
       <div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:4px;">
         Already have an account? <a href="/login" style="color:var(--accent-gold);text-decoration:underline;">Log in</a>
       </div>
@@ -228,9 +228,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.13"></script>
-  <script src="/shared/ot.js?v=v3.40.13"></script>
-  <script src="/shared/catalog.js?v=v3.40.13"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.14"></script>
+  <script src="/shared/ot.js?v=v3.40.14"></script>
+  <script src="/shared/catalog.js?v=v3.40.14"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -238,7 +238,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.13"></script>
+  <script src="/-/js/app.js?v=v3.40.14"></script>
 </body>
 </html>`;
 }
@@ -252,15 +252,15 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
   const currentSlug = codeshare.slug || codeshare.shortId;
 
   return `${renderHead({
-    title: `${codeshare.title || codeshare.shortId} - CodeFlow`,
+    title: `${codeshare.title || codeshare.shortId} - CodeeFlow`,
     includeCodeMirror: true,
     theme: userTheme
   })}
 <body>
   <div class="workspace-shell">
     <div id="migration-banner" class="migration-banner" ${codeshare.migratedAt ? '' : 'hidden'}>
-      <span>This CodeFlow room has been migrated and locked in read-only mode. A local backup has been saved.</span>
-      <a href="/new" class="btn btn-secondary" style="height:26px;">Create New CodeFlow</a>
+      <span>This CodeeFlow room has been migrated and locked in read-only mode. A local backup has been saved.</span>
+      <a href="/new" class="btn btn-secondary" style="height:26px;">Create New CodeeFlow</a>
     </div>
 
     ${renderNavbar({ me, codeshare })}
@@ -316,10 +316,10 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
     interview:
       'Set coding tasks and observe in real-time when interviewing remotely or in person. Nobody likes writing code on a whiteboard.',
     teach:
-      'Share your code with students and peers then educate them. Universities and colleges around the world use CodeFlow every day.'
+      'Share your code with students and peers then educate them. Universities and colleges around the world use CodeeFlow every day.'
   };
 
-  return `${renderHead({ title: 'CodeFlow — Share code in real-time with developers in your browser' })}
+  return `${renderHead({ title: 'CodeeFlow — Share code in real-time with developers in your browser' })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container">
@@ -339,7 +339,7 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
 
         <form id="join-existing-form" action="/join" method="GET" class="join-room-card">
           <div class="join-room-input-group">
-            <span class="join-room-prefix">codeflow.io /</span>
+            <span class="join-room-prefix">codeeflow.io /</span>
             <input
               id="join-room-input"
               name="room"
@@ -359,10 +359,10 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
 
     <section class="minimal-card" style="padding:0;overflow:clip;">
       <div class="studio-preview-header">
-        <span class="mono" style="font-size:12px;color:var(--text-secondary);">codeflow.io/G8WoB4 — Live Collaborative Studio</span>
+        <span class="mono" style="font-size:12px;color:var(--text-secondary);">codeeflow.io/G8WoB4 — Live Collaborative Studio</span>
         <a href="/G8WoB4" class="btn btn-glass btn-pill" style="height:30px;">Open Live Room →</a>
       </div>
-      <pre class="mono studio-preview-pre"><code><span style="color:var(--text-muted);">// Real-time Operational Transformation over WebSocket (CodeFlow Live Engine)</span>
+      <pre class="mono studio-preview-pre"><code><span style="color:var(--text-muted);">// Real-time Operational Transformation over WebSocket (CodeeFlow Live Engine)</span>
 <span style="color:var(--accent-gold);font-weight:600;">async function</span> <span style="color:var(--accent-primary);font-weight:600;">collaborate</span>(roomId = <span style="color:var(--accent-emerald);">"G8WoB4"</span>) {
   <span style="color:var(--accent-gold);font-weight:600;">const</span> session = <span style="color:var(--accent-gold);font-weight:600;">await</span> SessionHelper.getOrCreate();
   <span style="color:var(--accent-gold);font-weight:600;">return</span> FirepadOT.connect({ roomId, checkpointInterval: <span style="color:var(--accent-gold);">100</span> });
@@ -372,7 +372,7 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
     <section class="feature-grid">
       <article class="minimal-card">
         <h3>Code with your team</h3>
-        <p>Open a CodeFlow editor, write or copy code, then share it with friends and colleagues. Pair program and troubleshoot together.</p>
+        <p>Open a CodeeFlow editor, write or copy code, then share it with friends and colleagues. Pair program and troubleshoot together.</p>
         <div style="margin-top:16px;"><a href="/new" rel="nofollow" class="btn btn-glass btn-pill">Hack Together</a></div>
       </article>
       <article class="minimal-card">
@@ -382,7 +382,7 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
       </article>
       <article class="minimal-card">
         <h3>Teach people to program</h3>
-        <p>Share your code with students and peers then educate them. Universities and colleges around the world use CodeFlow every day.</p>
+        <p>Share your code with students and peers then educate them. Universities and colleges around the world use CodeeFlow every day.</p>
         <div style="margin-top:16px;"><a href="/teach" class="btn btn-glass btn-pill">Teach Code</a></div>
       </article>
     </section>
@@ -392,7 +392,7 @@ function renderLandingPage({ me, apiHeaders, variant = 'default' }) {
 }
 
 // ============================================================================
-// 3. Saved CodeFlows Dashboard (`/codes`)
+// 3. Saved CodeeFlows Dashboard (`/codes`)
 // ============================================================================
 function renderCodesDashboard({ me, codeshares, limitReached = false, apiHeaders }) {
   const rows = codeshares
@@ -422,37 +422,37 @@ function renderCodesDashboard({ me, codeshares, limitReached = false, apiHeaders
     })
     .join('');
 
-  return `${renderHead({ title: 'Saved CodeFlows - CodeFlow' })}
+  return `${renderHead({ title: 'Saved CodeeFlows - CodeeFlow' })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container">
     <div class="dashboard-header">
       <div>
-        <h1 class="serif-display" style="font-size:clamp(2rem,1.4rem+2.5vw,2.6rem);line-height:1.1;">Saved CodeFlows</h1>
+        <h1 class="serif-display" style="font-size:clamp(2rem,1.4rem+2.5vw,2.6rem);line-height:1.1;">Saved CodeeFlows</h1>
         <p style="color:var(--text-secondary);margin-top:4px;">
           ${
             me && me.isPro
-              ? 'CodeFlow Pro — Unlimited saved rooms active.'
+              ? 'CodeeFlow Pro — Unlimited saved rooms active.'
               : `Free Plan — ${codeshares.length} of 20 saved rooms used.`
           }
         </p>
       </div>
-      <a href="/new" rel="nofollow" class="btn btn-primary btn-pill">+ New CodeFlow</a>
+      <a href="/new" rel="nofollow" class="btn btn-primary btn-pill">+ New CodeeFlow</a>
     </div>
 
     ${
       limitReached
         ? `<div class="minimal-card" style="margin-bottom:24px;border-color:var(--accent-gold);background:var(--accent-gold-bg);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;">
             <div>
-              <strong style="color:var(--accent-gold);">Saved CodeFlow Limit Reached (20/20)</strong>
-              <p style="font-size:13px;color:var(--text-primary);margin-top:2px;">Delete an old room below or upgrade to CodeFlow Pro for unlimited saved rooms.</p>
+              <strong style="color:var(--accent-gold);">Saved CodeeFlow Limit Reached (20/20)</strong>
+              <p style="font-size:13px;color:var(--text-primary);margin-top:2px;">Delete an old room below or upgrade to CodeeFlow Pro for unlimited saved rooms.</p>
             </div>
             <button type="button" data-open-pro class="btn btn-primary btn-pill">Upgrade to Pro</button>
           </div>`
         : ''
     }
 
-    <div tabindex="0" role="region" aria-label="Saved CodeFlows directory" class="codes-table-wrap">
+    <div tabindex="0" role="region" aria-label="Saved CodeeFlows directory" class="codes-table-wrap">
       <table class="codes-table codes-table-saved">
         <thead>
           <tr>
@@ -466,7 +466,7 @@ function renderCodesDashboard({ me, codeshares, limitReached = false, apiHeaders
         <tbody>
           ${
             rows ||
-            `<tr class="empty-table-row"><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary);">No saved rooms yet. Click "+ New CodeFlow" to create one.</td></tr>`
+            `<tr class="empty-table-row"><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary);">No saved rooms yet. Click "+ New CodeeFlow" to create one.</td></tr>`
           }
         </tbody>
       </table>
@@ -481,38 +481,38 @@ function renderCodesDashboard({ me, codeshares, limitReached = false, apiHeaders
 // ============================================================================
 function renderPlansPage({ me, apiHeaders }) {
   const isPro = Boolean(me && me.isPro);
-  return `${renderHead({ title: 'Plans & Pricing - CodeFlow' })}
+  return `${renderHead({ title: 'Plans & Pricing - CodeeFlow' })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container">
     <section class="hero-section" style="margin-bottom:44px;">
       <h1 class="hero-title" style="font-size:52px;">Simple, Transparent <em>Pricing</em></h1>
-      <p class="hero-subtitle">Start sharing code immediately for free, or upgrade to CodeFlow Pro for access control and unlimited saved rooms.</p>
+      <p class="hero-subtitle">Start sharing code immediately for free, or upgrade to CodeeFlow Pro for access control and unlimited saved rooms.</p>
     </section>
 
     <div class="plans-grid">
       <div class="minimal-card">
         <div class="mono" style="font-size:11px;text-transform:uppercase;color:var(--text-muted);">Standard</div>
-        <h2 class="serif-display" style="font-size:32px;margin-top:4px;">CodeFlow Free</h2>
+        <h2 class="serif-display" style="font-size:32px;margin-top:4px;">CodeeFlow Free</h2>
         <div class="plan-price">$0 <span>/ month</span></div>
         <ul class="plan-features">
-          <li>✓ Up to 20 Saved CodeFlows</li>
+          <li>✓ Up to 20 Saved CodeeFlows</li>
           <li>✓ Unlimited Real-Time Collaborators</li>
           <li>✓ All 115 Syntax Modes & 47 Themes</li>
           <li>✓ Ad-supported footer</li>
         </ul>
-        <a href="/new" rel="nofollow" class="btn btn-secondary" style="width:100%;height:40px;">Create Free CodeFlow</a>
+        <a href="/new" rel="nofollow" class="btn btn-secondary" style="width:100%;height:40px;">Create Free CodeeFlow</a>
       </div>
 
       <div class="minimal-card" style="border-color:var(--accent-gold);">
         <div class="mono" style="font-size:11px;text-transform:uppercase;color:var(--accent-gold);">Most Popular</div>
-        <h2 class="serif-display" style="font-size:32px;margin-top:4px;">CodeFlow Pro</h2>
+        <h2 class="serif-display" style="font-size:32px;margin-top:4px;">CodeeFlow Pro</h2>
         <div class="plan-price">$49 <span>/ month</span></div>
         <ul class="plan-features">
-          <li>✓ <strong>Unlimited</strong> Saved CodeFlows</li>
+          <li>✓ <strong>Unlimited</strong> Saved CodeeFlows</li>
           <li>✓ <strong>View-Only Mode</strong> (lock rooms for guests)</li>
           <li>✓ <strong>No Ads</strong> for you and all room visitors</li>
-          <li>✓ <strong>Default CodeFlow Settings</strong> & Custom Logo</li>
+          <li>✓ <strong>Default CodeeFlow Settings</strong> & Custom Logo</li>
         </ul>
         ${
           isPro
@@ -549,7 +549,7 @@ function renderSettingsPage({ me, apiHeaders }) {
       }>${escapeHtml(t)} spaces</option>`
   ).join('');
 
-  return `${renderHead({ title: 'Account Settings - CodeFlow' })}
+  return `${renderHead({ title: 'Account Settings - CodeeFlow' })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container" style="max-width:680px;">
@@ -583,7 +583,7 @@ function renderSettingsPage({ me, apiHeaders }) {
 
     <section class="minimal-card" style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 class="serif-display" style="font-size:26px;">Default CodeFlow Settings</h2>
+        <h2 class="serif-display" style="font-size:26px;">Default CodeeFlow Settings</h2>
         <span class="brand-badge">Pro Feature</span>
       </div>
       <form id="default-codeshare-settings-form" style="display:flex;flex-direction:column;gap:14px;">
@@ -619,7 +619,7 @@ function renderSettingsPage({ me, apiHeaders }) {
 
     <section class="minimal-card" style="border-color:rgba(248,113,113,0.3);">
       <h2 class="serif-display" style="font-size:24px;color:var(--accent-danger);margin-bottom:8px;">Danger Zone</h2>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Permanently delete your account and all saved CodeFlows.</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Permanently delete your account and all saved CodeeFlows.</p>
       <button type="button" id="delete-account-btn" class="btn btn-danger">Delete My Account</button>
     </section>
   </main>
@@ -634,7 +634,7 @@ function renderAuthPage({ me, mode = 'login', saveCodeshare = null, apiHeaders }
   const isLogin = mode === 'login';
   const redirectUrl = saveCodeshare ? `/${encodeURIComponent(saveCodeshare)}` : '/codes';
 
-  return `${renderHead({ title: `${isLogin ? 'Log In' : 'Sign Up'} - CodeFlow` })}
+  return `${renderHead({ title: `${isLogin ? 'Log In' : 'Sign Up'} - CodeeFlow` })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container" style="max-width:440px;">
@@ -645,8 +645,8 @@ function renderAuthPage({ me, mode = 'login', saveCodeshare = null, apiHeaders }
       <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">
         ${
           isLogin
-            ? 'Sign in to access your saved CodeFlow rooms and preferences.'
-            : 'Save your CodeFlows permanently and access them from anywhere.'
+            ? 'Sign in to access your saved CodeeFlow rooms and preferences.'
+            : 'Save your CodeeFlows permanently and access them from anywhere.'
         }
       </p>
       <form ${
@@ -710,16 +710,16 @@ function renderAdminPage({ me, searchedEmail, targetUser, apiHeaders }) {
           .join('')
       : '';
 
-  return `${renderHead({ title: 'Internal Admin - CodeFlow' })}
+  return `${renderHead({ title: 'Internal Admin - CodeeFlow' })}
 <body>
   ${renderNavbar({ me })}
   <main class="page-container" style="max-width:760px;">
     <h1 class="serif-display" style="font-size:clamp(1.8rem,1.4rem+2vw,2.4rem);margin-bottom:6px;">Internal Subscription Admin (<code>/_/admin</code>)</h1>
-    <p style="color:var(--text-secondary);margin-bottom:24px;">Search users by email (e.g. <code>demo@codeflow.io</code>) and manage their CodeFlow Pro subscription plans.</p>
+    <p style="color:var(--text-secondary);margin-bottom:24px;">Search users by email (e.g. <code>demo@codeeflow.io</code>) and manage their CodeeFlow Pro subscription plans.</p>
 
     <form method="GET" action="/_/admin" class="share-url-row" style="margin-bottom:24px;">
-      <input name="email" type="email" class="text-input" placeholder="demo@codeflow.io" value="${escapeHtml(
-        searchedEmail || 'demo@codeflow.io'
+      <input name="email" type="email" class="text-input" placeholder="demo@codeeflow.io" value="${escapeHtml(
+        searchedEmail || 'demo@codeeflow.io'
       )}" required />
       <button type="submit" class="btn btn-primary btn-pill">Lookup User</button>
     </form>

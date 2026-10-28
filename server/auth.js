@@ -205,10 +205,10 @@ function browserCompatibilityGate(req, res, next) {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>CodeFlow - Unsupported Browser</title>
+    <title>CodeeFlow - Unsupported Browser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.11" />
-    <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.11" />
+    <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.14" />
+    <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.14" />
   </head>
   <body class="gate-body">
     <main class="gate-card">
@@ -224,11 +224,11 @@ function browserCompatibilityGate(req, res, next) {
       <h1 class="serif-display">Please update your browser.</h1>
       <p class="gate-text">
         In order to give you the best possible experience closely matched to your text editor,
-        CodeFlow uses cutting edge browser technology and requires an up to date browser.
+        CodeeFlow uses cutting edge browser technology and requires an up to date browser.
       </p>
       <p class="gate-subtext">
         Still having trouble?
-        <a id="use-anyway-button" href="javascript:void(0)">Ignore and use CodeFlow anyway.</a>
+        <a id="use-anyway-button" href="javascript:void(0)">Ignore and use CodeeFlow anyway.</a>
       </p>
     </main>
     <script>

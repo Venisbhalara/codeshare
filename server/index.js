@@ -78,7 +78,7 @@ app.get('/-/sp.json', (req, res) => {
       {
         statlink: '/plans',
         description:
-          'CodeFlow Pro — Unlock View-Only rooms, unlimited saved CodeFlows & zero ads.',
+          'CodeeFlow Pro — Unlock View-Only rooms, unlimited saved CodeeFlows & zero ads.',
         smallImage: '',
         pixel: ''
       }
@@ -267,7 +267,7 @@ app.get('/logout', (req, res) => {
 // 9. Internal Admin Dashboard (`GET /_/admin`)
 app.get('/_/admin', (req, res) => {
   const { user, apiHeaders } = getOrCreateSession(req, res);
-  const searchedEmail = req.query.email || 'demo@codeflow.io';
+  const searchedEmail = req.query.email || 'demo@codeeflow.io';
   const foundUser = db.getUserByEmail(searchedEmail);
   res.send(
     renderAdminPage({

@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.21" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.22" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.21" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.22" />
 </head>`;
 }
 
@@ -107,10 +107,6 @@ function renderNavbar({ me, codeshare = null }) {
                <svg class="copy-icon-success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                <span class="btn-label" id="codeshare-copy-label">Copy</span>
              </button>
-             <button type="button" id="codeshare-snapshot-button" class="btn btn-glass btn-icon-responsive" title="Export Aesthetic Code Screenshot (Ctrl+Shift+S)" aria-label="Export Code Screenshot">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-               <span class="btn-label">Snapshot</span>
-             </button>
              <button type="button" id="codeshare-download-button" class="btn btn-glass btn-icon-responsive" title="Download File" aria-label="Download File">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                <span class="btn-label">Download</span>
@@ -177,10 +173,6 @@ function renderGlobalDialogs({ me, codeshare = null }) {
             <span id="copy-qr-label">Copy QR</span>
           </button>
         </div>
-        <button type="button" id="open-snapshot-from-share-btn" class="share-snapshot-cta">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          <span>Create Aesthetic Code Screenshot →</span>
-        </button>
       </div>
     </div>
 
@@ -191,75 +183,6 @@ function renderGlobalDialogs({ me, codeshare = null }) {
         <div style="font-size:11.5px;color:var(--text-secondary);">Prevent guests from editing code while allowing them to watch live.</div>
       </div>
     </label>
-  </dialog>
-
-  <!-- Aesthetic Code Screenshot Export Studio (<dialog closedby="any">) -->
-  <dialog id="snapshot-dialog" class="snapshot-dialog" closedby="any" data-lenis-prevent aria-labelledby="snapshot-dialog-title">
-    <div class="dialog-header">
-      <div>
-        <h2 id="snapshot-dialog-title" class="dialog-title">Aesthetic Code <em>Screenshot Studio</em></h2>
-        <p class="dialog-subtitle">Export a high-resolution studio code card with syntax highlighting and a scannable room QR badge.</p>
-      </div>
-      <button type="button" data-close-dialog class="btn btn-ghost" aria-label="Close">✕</button>
-    </div>
-
-    <div class="snapshot-toolbar">
-      <div class="snapshot-control-group">
-        <span class="snapshot-control-label">Backdrop</span>
-        <div class="snapshot-swatch-list" id="snapshot-bg-swatches" role="radiogroup" aria-label="Backdrop Gradient">
-          <button type="button" class="snapshot-swatch active" data-bg-theme="emerald" title="Forest Studio" aria-label="Forest Studio" style="background:linear-gradient(135deg,#1B4332,#2D6A4F);"></button>
-          <button type="button" class="snapshot-swatch" data-bg-theme="sunset" title="Terracotta Sunset" aria-label="Terracotta Sunset" style="background:linear-gradient(135deg,#9A3412,#F4A27E);"></button>
-          <button type="button" class="snapshot-swatch" data-bg-theme="midnight" title="Midnight Obsidian" aria-label="Midnight Obsidian" style="background:linear-gradient(135deg,#0F172A,#334155);"></button>
-          <button type="button" class="snapshot-swatch" data-bg-theme="aurora" title="Nordic Aurora" aria-label="Nordic Aurora" style="background:linear-gradient(135deg,#064E3B,#311042);"></button>
-          <button type="button" class="snapshot-swatch" data-bg-theme="sand" title="Warm Ivory Paper" aria-label="Warm Ivory Paper" style="background:linear-gradient(135deg,#F6F3EC,#D6CFC1);"></button>
-        </div>
-      </div>
-
-      <div class="snapshot-control-group">
-        <label class="snapshot-control-label" for="snapshot-window-theme">Window</label>
-        <select id="snapshot-window-theme" class="snapshot-mini-select">
-          <option value="dark" selected>Obsidian Dark</option>
-          <option value="light">Warm Ivory</option>
-        </select>
-      </div>
-
-      <div class="snapshot-control-group">
-        <label class="snapshot-control-label" for="snapshot-padding-select">Padding</label>
-        <select id="snapshot-padding-select" class="snapshot-mini-select">
-          <option value="28">Compact</option>
-          <option value="44" selected>Studio</option>
-          <option value="64">Spacious</option>
-        </select>
-      </div>
-
-      <label class="snapshot-toggle-pill">
-        <input type="checkbox" id="snapshot-linenos-check" checked />
-        <span>Line #</span>
-      </label>
-
-      <label class="snapshot-toggle-pill">
-        <input type="checkbox" id="snapshot-watermark-check" checked />
-        <span>QR Badge</span>
-      </label>
-    </div>
-
-    <div class="snapshot-canvas-stage">
-      <canvas id="snapshot-preview-canvas" width="960" height="540" aria-label="Code Screenshot Preview"></canvas>
-    </div>
-
-    <div class="snapshot-footer-actions">
-      <span class="mono snapshot-hint" id="snapshot-scope-label">Exporting active file</span>
-      <div class="snapshot-action-btns">
-        <button type="button" id="snapshot-copy-btn" class="btn btn-glass btn-pill">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <span id="snapshot-copy-label">Copy Image</span>
-        </button>
-        <button type="button" id="snapshot-download-btn" class="btn btn-primary btn-pill">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span>Download PNG</span>
-        </button>
-      </div>
-    </div>
   </dialog>
 
   <!-- CodeeFlow Pro Checkout Modal (<dialog closedby="any">) -->
@@ -330,9 +253,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.21"></script>
-  <script src="/shared/ot.js?v=v3.40.21"></script>
-  <script src="/shared/catalog.js?v=v3.40.21"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.22"></script>
+  <script src="/shared/ot.js?v=v3.40.22"></script>
+  <script src="/shared/catalog.js?v=v3.40.22"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -340,7 +263,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.21"></script>
+  <script src="/-/js/app.js?v=v3.40.22"></script>
 </body>
 </html>`;
 }

@@ -249,15 +249,10 @@ async function runVerification() {
     assert(origRoomRes.body.includes(`"shortId":"${shortId}"`));
     assert(origRoomRes.body.includes('Hello Codeshare!'));
     assert(origRoomRes.body.includes('id="codeshare-copy-button"'));
-    assert(origRoomRes.body.includes('id="codeshare-snapshot-button"'));
+    assert(!origRoomRes.body.includes('id="codeshare-snapshot-button"'));
     assert(origRoomRes.body.includes('id="share-qr-canvas"'));
     assert(origRoomRes.body.includes('id="download-qr-btn"'));
     assert(origRoomRes.body.includes('id="copy-qr-btn"'));
-    assert(origRoomRes.body.includes('id="snapshot-dialog"'));
-    assert(origRoomRes.body.includes('id="snapshot-preview-canvas"'));
-    assert(origRoomRes.body.includes('id="snapshot-bg-swatches"'));
-    assert(origRoomRes.body.includes('id="snapshot-download-btn"'));
-    assert(origRoomRes.body.includes('id="snapshot-copy-btn"'));
     assert(origRoomRes.body.includes('id="permalink-banner"'));
     assert(origRoomRes.body.includes('id="permalink-copy-url-btn"'));
     assert(origRoomRes.body.includes('id="permalink-copy-lines-btn"'));
@@ -265,8 +260,7 @@ async function runVerification() {
     assert(origRoomRes.body.includes('id="editor-tabs-list"'));
     assert(origRoomRes.body.includes('id="add-file-tab-btn"'));
     assert(appJsRes.body.includes('generateQrMatrix'));
-    assert(appJsRes.body.includes('renderSnapshotCanvas'));
-    console.log('✓ One-Click Copy Code, Smart Line-Range Permalinks (#L10-L22), Instant QR Share & Code Screenshot Studio verified.');
+    console.log('✓ One-Click Copy Code, Smart Line-Range Permalinks (#L10-L22) & Instant QR Share verified.');
 
     // Verify Multi-Tab / Multi-File Rooms (default .txt format on create, rename, update via GraphQL)
     assert(appJsRes.body.includes('`file-${fileNum}.txt`'));

@@ -1685,34 +1685,6 @@ a {
   word-break: break-word !important;
 }
 
-/* Remote Collaborator Carets & Selection Flags */
-.remote-caret {
-  position: relative;
-  border-left: 2px solid var(--caret-color, #2D6A4F);
-  margin-left: -1px;
-  margin-right: -1px;
-  pointer-events: none;
-  z-index: 10;
-  forced-color-adjust: none;
-}
-
-.remote-caret-flag {
-  position: absolute;
-  top: -18px;
-  left: -2px;
-  padding: 1px 6px;
-  border-radius: 4px 4px 4px 0;
-  background-color: var(--caret-color, #2D6A4F);
-  color: #FFFDF9;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  forced-color-adjust: none;
-}
-
 /* ==========================================================================
    Right-Hand Floating Glass Settings Sidebar (Desktop Card / Mobile Bottom Sheet)
    ========================================================================== */

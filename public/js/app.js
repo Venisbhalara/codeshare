@@ -1539,53 +1539,12 @@
     const activeRoomUsers = new Map();     // nodeId -> node
 
     function renderRemoteCursors() {
-      // Clear previous markers
+      // Clear any previous markers (Guest caret flags disabled completely)
       for (const markers of remoteCursorWidgets.values()) {
         if (markers.bookmark) markers.bookmark.clear();
         if (markers.selectionMarker) markers.selectionMarker.clear();
       }
       remoteCursorWidgets.clear();
-
-      const doc = cm.getDoc();
-      const docLen = doc.getValue().length;
-
-      for (const [nodeId, uNode] of activeRoomUsers.entries()) {
-        if (uNode.createdBy && uNode.createdBy.me) continue;
-        if (!uNode.cursor || uNode.cursor.position < 0) continue;
-
-        const posIdx = Math.min(docLen, Math.max(0, uNode.cursor.position));
-        const endIdx = Math.min(docLen, Math.max(0, uNode.cursor.selectionEnd));
-        const color = uNode.color || '#61AFEF';
-        const label =
-          (uNode.createdBy && uNode.createdBy.name) ||
-          `Guest ${String(uNode.id).slice(-4)}`;
-
-        const caretEl = document.createElement('span');
-        caretEl.className = 'remote-caret';
-        caretEl.style.setProperty('--caret-color', color);
-        const flagEl = document.createElement('span');
-        flagEl.className = 'remote-caret-flag';
-        flagEl.style.setProperty('--caret-color', color);
-        flagEl.textContent = label;
-        caretEl.appendChild(flagEl);
-
-        const headPos = doc.posFromIndex(posIdx);
-        const bookmark = doc.setBookmark(headPos, {
-          widget: caretEl,
-          insertLeft: true
-        });
-
-        let selectionMarker = null;
-        if (posIdx !== endIdx) {
-          const fromPos = doc.posFromIndex(Math.min(posIdx, endIdx));
-          const toPos = doc.posFromIndex(Math.max(posIdx, endIdx));
-          selectionMarker = doc.markText(fromPos, toPos, {
-            css: `background-color: ${color}33; border-bottom: 1px solid ${color};`
-          });
-        }
-
-        remoteCursorWidgets.set(nodeId, { bookmark, selectionMarker });
-      }
     }
 
     // Populate initial room users

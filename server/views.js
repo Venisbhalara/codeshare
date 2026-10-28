@@ -202,19 +202,17 @@ function renderGlobalDialogs({ me, codeshare = null }) {
     <form data-graphql-register-form style="display:flex;flex-direction:column;gap:12px;">
       <div class="form-error-banner" style="color:var(--accent-danger);font-size:12.5px;"></div>
       <div class="field">
-        <label for="modal-reg-name">Your Name</label>
-        <input id="modal-reg-name" name="name" type="text" class="text-input" required placeholder="Ada Lovelace" />
+        <label for="modal-reg-name">Full Name</label>
+        <input id="modal-reg-name" name="name" type="text" class="text-input" autocomplete="name" enterkeyhint="next" required />
       </div>
       <div class="field">
         <label for="modal-reg-email">Email Address</label>
-        <span id="modal-email-hint" class="hint">Format: name@domain.com</span>
-        <input id="modal-reg-email" name="email" type="email" class="text-input" required aria-describedby="modal-email-hint" aria-errormessage="modal-email-err" placeholder="ada@analytical.engine" />
+        <input id="modal-reg-email" name="email" type="email" class="text-input" autocomplete="username" spellcheck="false" enterkeyhint="next" required aria-errormessage="modal-email-err" />
         <div id="modal-email-err" class="error-msg">Please enter a valid email address.</div>
       </div>
       <div class="field">
         <label for="modal-reg-pass">Password</label>
-        <span id="modal-pass-hint" class="hint">At least 6 characters</span>
-        <input id="modal-reg-pass" name="password" type="password" class="text-input" required minlength="6" aria-describedby="modal-pass-hint" aria-errormessage="modal-pass-err" placeholder="••••••••" />
+        <input id="modal-reg-pass" name="password" type="password" class="text-input" autocomplete="new-password" enterkeyhint="done" required minlength="6" aria-errormessage="modal-pass-err" />
         <div id="modal-pass-err" class="error-msg">Password must be at least 6 characters.</div>
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%;height:38px;margin-top:4px;">Sign Up & Save CodeFlow</button>
@@ -647,7 +645,7 @@ function renderAuthPage({ me, mode = 'login', saveCodeshare = null, apiHeaders }
       <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">
         ${
           isLogin
-            ? 'Demo account: demo@codeflow.io / Password123!'
+            ? 'Sign in to access your saved CodeFlow rooms and preferences.'
             : 'Save your CodeFlows permanently and access them from anywhere.'
         }
       </p>
@@ -659,20 +657,20 @@ function renderAuthPage({ me, mode = 'login', saveCodeshare = null, apiHeaders }
           !isLogin
             ? `<div class="field">
                 <label for="auth-name">Full Name</label>
-                <input id="auth-name" name="name" type="text" class="text-input" required placeholder="Grace Hopper" />
+                <input id="auth-name" name="name" type="text" class="text-input" autocomplete="name" enterkeyhint="next" required />
               </div>`
             : ''
         }
         <div class="field">
           <label for="auth-email">Email Address</label>
-          <span id="auth-email-hint" class="hint">Format: you@example.com</span>
-          <input id="auth-email" name="email" type="email" class="text-input" required aria-describedby="auth-email-hint" aria-errormessage="auth-email-err" placeholder="demo@codeflow.io" />
+          <input id="auth-email" name="email" type="email" class="text-input" autocomplete="username" spellcheck="false" enterkeyhint="next" required aria-errormessage="auth-email-err" />
           <div id="auth-email-err" class="error-msg">Please enter a valid email address.</div>
         </div>
         <div class="field">
           <label for="auth-pass">Password</label>
-          <span id="auth-pass-hint" class="hint">At least 6 characters</span>
-          <input id="auth-pass" name="password" type="password" class="text-input" required minlength="6" aria-describedby="auth-pass-hint" aria-errormessage="auth-pass-err" placeholder="••••••••" />
+          <input id="auth-pass" name="password" type="password" class="text-input" autocomplete="${
+            isLogin ? 'current-password' : 'new-password'
+          }" enterkeyhint="done" required minlength="6" aria-errormessage="auth-pass-err" />
           <div id="auth-pass-err" class="error-msg">Password must be at least 6 characters.</div>
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;height:38px;margin-top:4px;">

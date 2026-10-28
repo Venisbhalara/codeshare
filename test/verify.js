@@ -180,6 +180,17 @@ async function runVerification() {
     assert.strictEqual(logoRes.status, 200);
     assert(logoRes.body.includes('<svg'));
 
+    const loginRes = await httpRequest(port, { path: '/login', method: 'GET' });
+    assert.strictEqual(loginRes.status, 200);
+    assert(!loginRes.body.includes('demo@codeflow.io'));
+    assert(!loginRes.body.includes('Password123!'));
+    assert(loginRes.body.includes('autocomplete="current-password"'));
+
+    const registerRes = await httpRequest(port, { path: '/register', method: 'GET' });
+    assert.strictEqual(registerRes.status, 200);
+    assert(!registerRes.body.includes('Grace Hopper'));
+    assert(registerRes.body.includes('autocomplete="new-password"'));
+
     const joinRes = await httpRequest(port, {
       path: `/join?room=${encodeURIComponent(`http://localhost:3000/${shortId}`)}`,
       method: 'GET'

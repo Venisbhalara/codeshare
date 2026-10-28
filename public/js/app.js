@@ -591,22 +591,15 @@
       }
     }
 
-    // Load anonymous user theme/keymap from localStorage if matching user:id
-    if (me && me.anonymous) {
-      try {
-        const storedUserId = localStorage.getItem('user:id');
-        if (storedUserId === me.id) {
-          let savedTheme = localStorage.getItem('user:theme');
-          if (savedTheme === 'monokai') {
-            savedTheme = 'eclipse';
-            localStorage.setItem('user:theme', 'eclipse');
-          }
-          const savedKeymap = localStorage.getItem('user:keymap');
-          if (savedTheme) me.settings.theme = savedTheme;
-          if (savedKeymap) me.settings.keymap = savedKeymap;
-        }
-      } catch (_) {}
+    // Always use the default studio theme ('eclipse') and keymap ('sublime')
+    if (me && me.settings) {
+      me.settings.theme = 'eclipse';
+      me.settings.keymap = 'sublime';
     }
+    try {
+      localStorage.removeItem('user:theme');
+      localStorage.removeItem('user:keymap');
+    } catch (_) {}
 
     // Dynamic CSS & Script Loader for CodeMirror Modes, Themes, Keymaps & Addons
     const loadedStyles = new Set();

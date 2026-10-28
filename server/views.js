@@ -34,7 +34,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.8" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.9" />
 </head>`;
 }
 
@@ -205,9 +205,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.8"></script>
-  <script src="/shared/ot.js?v=v3.40.8"></script>
-  <script src="/shared/catalog.js?v=v3.40.8"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.9"></script>
+  <script src="/shared/ot.js?v=v3.40.9"></script>
+  <script src="/shared/catalog.js?v=v3.40.9"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -215,7 +215,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.8"></script>
+  <script src="/-/js/app.js?v=v3.40.9"></script>
 </body>
 </html>`;
 }
@@ -224,39 +224,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
 // 1. Collaborative Room View (`/:codeshareId`)
 // ============================================================================
 function renderRoomPage({ me, codeshare, apiHeaders }) {
-  const rawTheme = (me && me.settings && me.settings.theme) || 'eclipse';
-  const userTheme = rawTheme === 'monokai' ? 'eclipse' : rawTheme;
-  const userKeymap = (me && me.settings && me.settings.keymap) || 'sublime';
+  const userTheme = 'eclipse';
   const editable = Boolean(codeshare.canEdit && codeshare.canEdit.me && !codeshare.migratedAt);
   const currentSlug = codeshare.slug || codeshare.shortId;
-
-  const modeOptions = Catalog.MODES.map(
-    (m) =>
-      `<option value="${escapeHtml(m.name)}" ${
-        m.name === codeshare.modeName ? 'selected' : ''
-      }>${escapeHtml(m.name)}</option>`
-  ).join('');
-
-  const tabOptions = Catalog.TAB_SIZES.map(
-    (t) =>
-      `<option value="${escapeHtml(t)}" ${
-        String(t) === String(codeshare.tabSize) ? 'selected' : ''
-      }>${escapeHtml(t)} spaces</option>`
-  ).join('');
-
-  const themeOptions = Catalog.THEMES.map(
-    (th) =>
-      `<option value="${escapeHtml(th)}" ${
-        th === userTheme ? 'selected' : ''
-      }>${escapeHtml(th)}</option>`
-  ).join('');
-
-  const keymapOptions = Catalog.KEYMAPS.map(
-    (km) =>
-      `<option value="${escapeHtml(km)}" ${
-        km === userKeymap ? 'selected' : ''
-      }>${escapeHtml(km)}</option>`
-  ).join('');
 
   return `${renderHead({
     title: `${codeshare.title || codeshare.shortId} - Codeshare`,
@@ -277,8 +247,6 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
         <div id="editor-container"></div>
         <div class="editor-status-pill" aria-live="polite">
           <span id="status-cursor-label" class="mono">Ln 1, Col 1</span>
-          <span class="status-dot-sep">•</span>
-          <span id="status-mode-label" class="mono">${escapeHtml(codeshare.modeName)}</span>
         </div>
         <!-- Legacy WebRTC containers preserved for structural parity -->
         <div id="local-video" hidden></div>
@@ -301,40 +269,6 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
             ${editable ? '' : 'disabled'}
           />
           <span class="room-url-preview">/<span id="live-slug-preview" contenteditable="${editable ? 'true' : 'false'}" spellcheck="false" title="Edit URL slug">${escapeHtml(currentSlug)}</span></span>
-        </div>
-
-        <div class="field">
-          <label for="codeshare-mode-select">Language</label>
-          <select id="codeshare-mode-select" name="modeName" class="brand-select" ${editable ? '' : 'disabled'}>
-            <button><selectedcontent></selectedcontent></button>
-            ${modeOptions}
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="codeshare-theme-select">Theme</label>
-          <select id="codeshare-theme-select" name="theme" class="brand-select">
-            <button><selectedcontent></selectedcontent></button>
-            ${themeOptions}
-          </select>
-        </div>
-
-        <div class="sidebar-grid-2">
-          <div class="field">
-            <label for="codeshare-tabsize-select">Tab Size</label>
-            <select id="codeshare-tabsize-select" name="tabSize" class="brand-select" ${editable ? '' : 'disabled'}>
-              <button><selectedcontent></selectedcontent></button>
-              ${tabOptions}
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="codeshare-keymap-select">Keymap</label>
-            <select id="codeshare-keymap-select" name="keymap" class="brand-select">
-              <button><selectedcontent></selectedcontent></button>
-              ${keymapOptions}
-            </select>
-          </div>
         </div>
       </aside>
     </main>

@@ -253,7 +253,89 @@ async function runVerification() {
     assert(slugRoomRes.body.includes('id="permalink-copy-url-btn"'));
     assert(slugRoomRes.body.includes('id="permalink-copy-lines-btn"'));
     assert(slugRoomRes.body.includes('id="status-permalink-btn"'));
+    assert(slugRoomRes.body.includes('id="editor-tabs-list"'));
+    assert(slugRoomRes.body.includes('id="add-file-tab-btn"'));
     console.log('✓ One-Click Copy Code & Smart Line-Range Permalinks (#L10-L22) verified.');
+
+    // Verify Multi-Tab / Multi-File Rooms (create, update, rename, delete file tabs via GraphQL)
+    const demoRoomRes = await httpRequest(port, { path: '/G8WoB4', method: 'GET' });
+    assert.strictEqual(demoRoomRes.status, 200);
+    assert(demoRoomRes.body.includes('collaborate.js'));
+    assert(demoRoomRes.body.includes('styles.css'));
+    assert(demoRoomRes.body.includes('notes.md'));
+
+    const createTabBody = JSON.stringify({
+      operationName: 'updateCodeshareFileActionMutation',
+      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content } } } }',
+      variables: {
+        input: {
+          id: encodeRelayId('Codeshare', shortId),
+          fileAction: {
+            type: 'create',
+            id: 'file-styles',
+            name: 'styles.css',
+            modeName: 'CSS',
+            content: '.card { border-radius: 16px; }\n',
+            clientId: 'test-client-A'
+          }
+        }
+      }
+    });
+    const createTabRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: cookieHeader
+        }
+      },
+      createTabBody
+    );
+    assert.strictEqual(createTabRes.status, 200);
+    const createTabJson = JSON.parse(createTabRes.body);
+    const createdFiles = createTabJson.data.updateCodeshare.codeshare.files;
+    assert.strictEqual(createdFiles.length, 2);
+    assert.strictEqual(createdFiles[1].id, 'file-styles');
+    assert.strictEqual(createdFiles[1].name, 'styles.css');
+    assert.strictEqual(createdFiles[1].modeName, 'CSS');
+    assert.strictEqual(createdFiles[1].content, '.card { border-radius: 16px; }\n');
+
+    const renameTabBody = JSON.stringify({
+      operationName: 'updateCodeshareFileActionMutation',
+      query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id files { id name modeName content } } } }',
+      variables: {
+        input: {
+          id: encodeRelayId('Codeshare', shortId),
+          fileAction: {
+            type: 'rename',
+            id: 'file-styles',
+            name: 'notes.md',
+            modeName: 'Markdown',
+            clientId: 'test-client-A'
+          }
+        }
+      }
+    });
+    const renameTabRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: cookieHeader
+        }
+      },
+      renameTabBody
+    );
+    assert.strictEqual(renameTabRes.status, 200);
+    const renameTabJson = JSON.parse(renameTabRes.body);
+    const renamedFiles = renameTabJson.data.updateCodeshare.codeshare.files;
+    assert.strictEqual(renamedFiles[1].name, 'notes.md');
+    assert.strictEqual(renamedFiles[1].modeName, 'Markdown');
+    console.log('✓ Multi-Tab / Multi-File Rooms (create, rename, update & real-time sync) verified.');
 
     // Verify URL -> Title Sync (changing URL in browser address bar updates room Title)
     const urlDrivenSlug = `Url-Driven-Title-${shortId}`;

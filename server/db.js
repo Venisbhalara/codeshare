@@ -14,7 +14,9 @@ const {
   DEFAULT_KEYMAP,
   DEFAULT_MODE_NAME,
   DEFAULT_TAB_SIZE,
-  DEFAULT_THEME
+  DEFAULT_THEME,
+  inferModeNameFromFilename,
+  defaultFilenameForMode
 } = require('../shared/catalog');
 
 const DATA_DIR =
@@ -221,6 +223,44 @@ class Database {
         saved: true,
         codeCheckpoint: null,
         migratedAt: null,
+        files: [
+          {
+            id: 'main',
+            name: 'collaborate.js',
+            modeName: 'JavaScript',
+            content: '',
+            updatedAt: now
+          },
+          {
+            id: 'file-styles',
+            name: 'styles.css',
+            modeName: 'CSS',
+            content: [
+              '/* CodeeFlow Studio Variables */',
+              ':root {',
+              '  --studio-bg: #F6F3EC;',
+              '  --studio-accent: #1B4332;',
+              '  --studio-gold: #B85D3B;',
+              '}',
+              ''
+            ].join('\n'),
+            updatedAt: now
+          },
+          {
+            id: 'file-notes',
+            name: 'notes.md',
+            modeName: 'Markdown',
+            content: [
+              '# Multi-File Collaborative Room',
+              '',
+              '- Switch between file tabs at the top of the editor',
+              '- Double-click any tab name to rename it (syntax highlights auto-detect!)',
+              '- Click **+ New File** to add more files to this room',
+              ''
+            ].join('\n'),
+            updatedAt: now
+          }
+        ],
         createdAt: now,
         updatedAt: now
       };
@@ -238,6 +278,78 @@ class Database {
           .replace('Welcome to CodeFlow', 'Welcome to CodeeFlow');
       this.saveSync();
     }
+
+    Object.values(this.state.codeshares).forEach((cs) => {
+      if (cs) this.ensureCodeshareFiles(cs);
+    });
+  }
+
+  ensureCodeshareFiles(cs) {
+    if (!cs) return [];
+    const now = cs.updatedAt || cs.createdAt || new Date().toISOString();
+    if (cs.id === 'G8WoB4' && (!Array.isArray(cs.files) || cs.files.length < 2)) {
+      cs.files = [
+        {
+          id: 'main',
+          name: 'collaborate.js',
+          modeName: cs.modeName || 'JavaScript',
+          content: '',
+          updatedAt: now
+        },
+        {
+          id: 'file-styles',
+          name: 'styles.css',
+          modeName: 'CSS',
+          content: [
+            '/* CodeeFlow Studio Variables */',
+            ':root {',
+            '  --studio-bg: #F6F3EC;',
+            '  --studio-accent: #1B4332;',
+            '  --studio-gold: #B85D3B;',
+            '}',
+            ''
+          ].join('\n'),
+          updatedAt: now
+        },
+        {
+          id: 'file-notes',
+          name: 'notes.md',
+          modeName: 'Markdown',
+          content: [
+            '# Multi-File Collaborative Room',
+            '',
+            '- Switch between file tabs at the top of the editor',
+            '- Double-click any tab name to rename it (syntax highlights auto-detect!)',
+            '- Click **+ New File** to add more files to this room',
+            ''
+          ].join('\n'),
+          updatedAt: now
+        }
+      ];
+      return cs.files;
+    }
+    if (!Array.isArray(cs.files) || cs.files.length === 0) {
+      const defMode = cs.modeName || DEFAULT_MODE_NAME;
+      cs.files = [
+        {
+          id: 'main',
+          name: defaultFilenameForMode(defMode),
+          modeName: defMode,
+          content: '',
+          updatedAt: now
+        }
+      ];
+    } else if (!cs.files.some((f) => f && f.id === 'main')) {
+      const defMode = cs.modeName || DEFAULT_MODE_NAME;
+      cs.files.unshift({
+        id: 'main',
+        name: defaultFilenameForMode(defMode),
+        modeName: defMode,
+        content: '',
+        updatedAt: now
+      });
+    }
+    return cs.files;
   }
 
   // =========================================================================
@@ -723,9 +835,82 @@ class Database {
     }
     if (typeof input.modeName === 'string') {
       cs.modeName = input.modeName;
+      this.ensureCodeshareFiles(cs);
+      const mainFile = cs.files.find((f) => f.id === 'main');
+      if (mainFile) {
+        mainFile.modeName = input.modeName;
+      }
     }
     if (typeof input.tabSize !== 'undefined' && input.tabSize !== null) {
       cs.tabSize = String(input.tabSize);
+    }
+    if (input.fileAction && typeof input.fileAction === 'object') {
+      if (!this.canUserEditCodeshare(cs, rawUserId)) {
+        const err = new Error('You do not have permission to edit this codeshare.');
+        err.code = 'FORBIDDEN';
+        err.status = 403;
+        throw err;
+      }
+      this.ensureCodeshareFiles(cs);
+      const action = input.fileAction;
+      const nowIso = new Date().toISOString();
+      const sanitizeFilename = (rawName, fallback) => {
+        const cleaned = String(rawName || '')
+          .trim()
+          .replace(/[\\/:*?"<>|\r\n\t]+/g, '-')
+          .slice(0, 48);
+        return cleaned || fallback;
+      };
+
+      if (action.type === 'create') {
+        if (cs.files.length < 24) {
+          const newId =
+            action.id && /^[a-zA-Z0-9_-]{2,32}$/.test(action.id)
+              ? action.id
+              : `file-${randomShortId(6)}`;
+          if (!cs.files.some((f) => f.id === newId)) {
+            const name = sanitizeFilename(action.name, `file-${cs.files.length + 1}.js`);
+            const modeName = inferModeNameFromFilename(
+              name,
+              action.modeName || cs.modeName || DEFAULT_MODE_NAME
+            );
+            cs.files.push({
+              id: newId,
+              name,
+              modeName,
+              content: String(action.content || ''),
+              updatedAt: nowIso,
+              lastClientId: action.clientId || null
+            });
+          }
+        }
+      } else if (action.type === 'rename' && action.id) {
+        const target = cs.files.find((f) => f.id === action.id);
+        if (target) {
+          target.name = sanitizeFilename(action.name, target.name);
+          target.modeName = inferModeNameFromFilename(target.name, target.modeName);
+          target.updatedAt = nowIso;
+          target.lastClientId = action.clientId || null;
+          if (target.id === 'main') {
+            cs.modeName = target.modeName;
+          }
+        }
+      } else if (action.type === 'update' && action.id) {
+        const target = cs.files.find((f) => f.id === action.id);
+        if (target && target.id !== 'main') {
+          target.content = String(action.content ?? '');
+          if (action.name) {
+            target.name = sanitizeFilename(action.name, target.name);
+            target.modeName = inferModeNameFromFilename(target.name, target.modeName);
+          }
+          target.updatedAt = nowIso;
+          target.lastClientId = action.clientId || null;
+        }
+      } else if (action.type === 'delete' && action.id) {
+        if (action.id !== 'main' && cs.files.length > 1) {
+          cs.files = cs.files.filter((f) => f.id !== action.id);
+        }
+      }
     }
     if (typeof input.canEdit !== 'undefined') {
       if (input.canEdit && Array.isArray(input.canEdit.userIds)) {

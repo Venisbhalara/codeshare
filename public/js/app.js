@@ -794,6 +794,318 @@
     let checkpointFailed = false;
 
     // =======================================================================
+    // 6a. Multi-Tab / Multi-File Rooms (`CodeMirror.Doc` per file tab)
+    // =======================================================================
+    const mainDoc = cm.getDoc();
+    let activeTabId = 'main';
+    const tabDocs = new Map([['main', mainDoc]]);
+    let roomFiles =
+      Array.isArray(codeshare.files) && codeshare.files.length > 0
+        ? codeshare.files.map((f) => Object.assign({}, f))
+        : [
+            {
+              id: 'main',
+              name:
+                typeof Catalog.defaultFilenameForMode === 'function'
+                  ? Catalog.defaultFilenameForMode(codeshare.modeName)
+                  : 'index.js',
+              modeName: codeshare.modeName || 'Plain Text',
+              content: ''
+            }
+          ];
+
+    function escapeTabText(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function getActiveFile() {
+      return roomFiles.find((f) => f.id === activeTabId) || roomFiles[0];
+    }
+
+    function getOrCreateDocForFile(file) {
+      if (!file || file.id === 'main') return mainDoc;
+      if (tabDocs.has(file.id)) return tabDocs.get(file.id);
+      const modeEntry =
+        Catalog.MODES_BY_NAME[file.modeName] || Catalog.MODES_BY_NAME['Plain Text'];
+      const doc = new window.CodeMirror.Doc(file.content || '', modeEntry.mime);
+      tabDocs.set(file.id, doc);
+      return doc;
+    }
+
+    // Pre-initialize CodeMirror.Doc instances for any secondary files
+    roomFiles.forEach((f) => {
+      if (f.id !== 'main') getOrCreateDocForFile(f);
+    });
+
+    function sendFileAction(fileAction) {
+      return gqlClient
+        .request({
+          operationName: 'updateCodeshareFileActionMutation',
+          query: `mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) {
+            updateCodeshare(input: $input) {
+              codeshare {
+                id slug title modeName tabSize canEdit { me userIds }
+                files { id name modeName content updatedAt lastClientId }
+              }
+            }
+          }`,
+          variables: {
+            input: {
+              id: codeshare.id,
+              fileAction: Object.assign({ clientId }, fileAction)
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    const throttledSendSecondaryFileUpdate = createTrailingThrottle((tabId, content) => {
+      sendFileAction({
+        type: 'update',
+        id: tabId,
+        content
+      });
+    }, 280);
+
+    function renderFileTabs() {
+      const listEl = document.getElementById('editor-tabs-list');
+      const addBtn = document.getElementById('add-file-tab-btn');
+      const editable = isEditable();
+      if (addBtn) {
+        addBtn.hidden = !editable;
+      }
+      if (!listEl) return;
+
+      listEl.innerHTML = roomFiles
+        .map((file) => {
+          const isActive = file.id === activeTabId;
+          const isMain = file.id === 'main';
+          const ext = file.name.includes('.')
+            ? file.name.split('.').pop().toLowerCase()
+            : 'txt';
+          return `<li class="editor-tab-item ${isActive ? 'active' : ''}" role="tab" aria-selected="${
+            isActive ? 'true' : 'false'
+          }" data-tab-id="${escapeTabText(file.id)}" data-tab-name="${escapeTabText(
+            file.name
+          )}" data-tab-mode="${escapeTabText(file.modeName || 'Plain Text')}">
+            <button type="button" class="editor-tab-btn" data-select-tab="${escapeTabText(
+              file.id
+            )}" title="${escapeTabText(file.name)} (${escapeTabText(
+            file.modeName || 'Plain Text'
+          )}) — Double-click to rename">
+              <span class="file-ext-dot" data-ext="${escapeTabText(ext)}"></span>
+              <span class="editor-tab-name">${escapeTabText(file.name)}</span>
+            </button>
+            ${
+              !isMain && editable
+                ? `<button type="button" class="editor-tab-close" data-close-tab="${escapeTabText(
+                    file.id
+                  )}" title="Delete ${escapeTabText(file.name)}" aria-label="Delete ${escapeTabText(
+                    file.name
+                  )}">&times;</button>`
+                : ''
+            }
+          </li>`;
+        })
+        .join('');
+    }
+
+    function switchToFileTab(tabId, { focusEditor = true } = {}) {
+      const targetFile = roomFiles.find((f) => f.id === tabId) || roomFiles[0];
+      if (!targetFile) return;
+      activeTabId = targetFile.id;
+      const targetDoc = getOrCreateDocForFile(targetFile);
+
+      suppressEditorChanges = true;
+      if (cm.getDoc() !== targetDoc) {
+        cm.swapDoc(targetDoc);
+      }
+      suppressEditorChanges = false;
+
+      const fileMode = targetFile.modeName || codeshare.modeName || 'Plain Text';
+      const modeSelectEl = document.getElementById('codeshare-mode-select');
+      if (modeSelectEl && modeSelectEl.value !== fileMode) {
+        modeSelectEl.value = fileMode;
+      }
+      applyLanguageMode(fileMode);
+      renderFileTabs();
+      updatePlaceholderVisibility();
+      updateStatusMetrics();
+      if (activePermalinkRange) {
+        renderPermalinkHighlight({ scrollIntoView: false });
+      }
+      if (focusEditor) {
+        cm.focus();
+      }
+    }
+
+    function startInlineTabRename(tabId, { isNewTab = false } = {}) {
+      if (!isEditable()) return;
+      const file = roomFiles.find((f) => f.id === tabId);
+      if (!file) return;
+      const listEl = document.getElementById('editor-tabs-list');
+      if (!listEl) return;
+      const tabItem = listEl.querySelector(`[data-tab-id="${CSS.escape(tabId)}"]`);
+      if (!tabItem) return;
+      const nameSpan = tabItem.querySelector('.editor-tab-name');
+      if (!nameSpan) return;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'editor-tab-rename-input';
+      input.value = file.name;
+      input.setAttribute('aria-label', 'File name');
+      nameSpan.replaceWith(input);
+      input.focus();
+
+      const dotIdx = file.name.lastIndexOf('.');
+      if (dotIdx > 0) {
+        input.setSelectionRange(0, dotIdx);
+      } else {
+        input.select();
+      }
+
+      let finished = false;
+      function commitRename(save) {
+        if (finished) return;
+        finished = true;
+        const rawVal = input.value.trim();
+        if (save && rawVal) {
+          const sanitized = rawVal.replace(/[/\\:*?"<>|]/g, '-').slice(0, 64);
+          const inferredMode =
+            typeof Catalog.inferModeNameFromFilename === 'function'
+              ? Catalog.inferModeNameFromFilename(sanitized, file.modeName)
+              : file.modeName;
+          file.name = sanitized;
+          file.modeName = inferredMode;
+          if (file.id === 'main') {
+            codeshare.modeName = inferredMode;
+          }
+          if (activeTabId === file.id) {
+            const modeSelectEl = document.getElementById('codeshare-mode-select');
+            if (modeSelectEl) modeSelectEl.value = inferredMode;
+            applyLanguageMode(inferredMode);
+          }
+          sendFileAction({
+            type: 'rename',
+            id: file.id,
+            name: file.name,
+            modeName: file.modeName
+          });
+          if (isNewTab) {
+            showToast(`Created ${file.name} (${file.modeName})`, { duration: 2200 });
+          } else {
+            showToast(`Renamed to ${file.name} (${file.modeName})`, { duration: 2200 });
+          }
+        }
+        renderFileTabs();
+        cm.focus();
+      }
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitRename(true);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          commitRename(false);
+        }
+      });
+      input.addEventListener('blur', () => commitRename(true));
+    }
+
+    function createNewFileTab() {
+      if (!isEditable()) return;
+      const existingNames = new Set(roomFiles.map((f) => f.name.toLowerCase()));
+      const suggestions = ['styles.css', 'notes.md', 'index.html', 'utils.js', 'schema.json', 'queries.sql'];
+      let defaultName = suggestions.find((s) => !existingNames.has(s));
+      if (!defaultName) {
+        defaultName = `file-${roomFiles.length + 1}.js`;
+      }
+      const modeName =
+        typeof Catalog.inferModeNameFromFilename === 'function'
+          ? Catalog.inferModeNameFromFilename(defaultName, codeshare.modeName || 'JavaScript')
+          : codeshare.modeName || 'JavaScript';
+      const newTabId = `file-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const initialContent = `// ${defaultName}\n`;
+      const newFile = {
+        id: newTabId,
+        name: defaultName,
+        modeName,
+        content: initialContent
+      };
+      roomFiles.push(newFile);
+      getOrCreateDocForFile(newFile);
+      sendFileAction({
+        type: 'create',
+        id: newFile.id,
+        name: newFile.name,
+        modeName: newFile.modeName,
+        content: newFile.content
+      });
+      switchToFileTab(newFile.id, { focusEditor: false });
+      startInlineTabRename(newFile.id, { isNewTab: true });
+    }
+
+    function deleteFileTab(tabId) {
+      if (!isEditable() || tabId === 'main') return;
+      const idx = roomFiles.findIndex((f) => f.id === tabId);
+      if (idx === -1) return;
+      const removed = roomFiles[idx];
+      roomFiles.splice(idx, 1);
+      tabDocs.delete(tabId);
+      sendFileAction({
+        type: 'delete',
+        id: tabId
+      });
+      showToast(`Closed ${removed.name}`, { duration: 2000 });
+      if (activeTabId === tabId) {
+        const nextFile = roomFiles[Math.max(0, idx - 1)] || roomFiles[0];
+        switchToFileTab(nextFile ? nextFile.id : 'main');
+      } else {
+        renderFileTabs();
+      }
+    }
+
+    const tabsListEl = document.getElementById('editor-tabs-list');
+    if (tabsListEl) {
+      tabsListEl.addEventListener('click', (e) => {
+        const closeBtn = e.target.closest('[data-close-tab]');
+        if (closeBtn) {
+          e.stopPropagation();
+          deleteFileTab(closeBtn.getAttribute('data-close-tab'));
+          return;
+        }
+        const selectBtn = e.target.closest('[data-select-tab]');
+        if (selectBtn) {
+          const tabId = selectBtn.getAttribute('data-select-tab');
+          if (tabId && tabId !== activeTabId) {
+            switchToFileTab(tabId);
+          }
+        }
+      });
+
+      tabsListEl.addEventListener('dblclick', (e) => {
+        const selectBtn = e.target.closest('[data-select-tab]');
+        if (selectBtn) {
+          e.preventDefault();
+          startInlineTabRename(selectBtn.getAttribute('data-select-tab'));
+        }
+      });
+    }
+
+    const addFileTabBtn = document.getElementById('add-file-tab-btn');
+    if (addFileTabBtn) {
+      addFileTabBtn.addEventListener('click', createNewFileTab);
+    }
+
+    renderFileTabs();
+
+    // =======================================================================
     // 6b. Smart Line-Range Permalinks (#L10 or #L10-L22)
     // =======================================================================
     let activePermalinkRange = null; // { startLine: number, endLine: number } (1-based)
@@ -942,7 +1254,7 @@
     function applyTextOperationToCodeMirror(op) {
       suppressEditorChanges = true;
       cm.operation(() => {
-        const doc = cm.getDoc();
+        const doc = mainDoc;
         let index = 0;
         for (let i = 0; i < op.ops.length; i++) {
           const comp = op.ops[i];
@@ -999,7 +1311,10 @@
     }
 
     function updatePlaceholderVisibility() {
-      const isEmpty = receivedHistory.size === 0 && cm.getValue().length === 0;
+      const isEmpty =
+        activeTabId === 'main'
+          ? receivedHistory.size === 0 && cm.getValue().length === 0
+          : cm.getValue().length === 0;
       cm.setOption(
         'placeholder',
         isEmpty
@@ -1168,13 +1483,27 @@
       updateRevisionBadge();
     }
 
-    // Convert CodeMirror change into TextOperation
+    // Convert CodeMirror change into TextOperation (for main tab) or fileAction update (for secondary tabs)
     cm.on('change', (instance, changeObj) => {
       if (suppressEditorChanges || changeObj.origin === '+remote') return;
       if (!isEditable()) return;
 
-      // Build TextOperation from CodeMirror changeObj
       const doc = instance.getDoc();
+      if (doc !== mainDoc) {
+        const activeFile = getActiveFile();
+        if (activeFile && activeFile.id !== 'main') {
+          activeFile.content = doc.getValue();
+          throttledSendSecondaryFileUpdate(activeFile.id, activeFile.content);
+        }
+        updatePlaceholderVisibility();
+        updateStatusMetrics();
+        if (activePermalinkRange) {
+          renderPermalinkHighlight({ scrollIntoView: false });
+        }
+        return;
+      }
+
+      // Build TextOperation from CodeMirror changeObj on mainDoc
       const startIndex = doc.indexFromPos(changeObj.from);
       const removedText = (changeObj.removed || ['']).join('\n');
       const insertedText = (changeObj.text || ['']).join('\n');
@@ -1387,7 +1716,12 @@
     gqlClient.subscribe({
       operationName: 'CodeshareIdCodeshareSubscription',
       query: `subscription CodeshareIdCodeshareSubscription($input: CodeshareUpdatesInput!) {
-        codeshareUpdates(input: $input) { codeshare { id slug title modeName tabSize migratedAt canEdit { me userIds } } }
+        codeshareUpdates(input: $input) {
+          codeshare {
+            id slug title modeName tabSize migratedAt canEdit { me userIds }
+            files { id name modeName content updatedAt lastClientId }
+          }
+        }
       }`,
       variables: { input: { codeshareId: codeshare.id } },
       onNext: (data) => {
@@ -1422,7 +1756,11 @@
         const data = await gqlClient.request({
           operationName: 'CodeshareIdCodeshareReconnectQuery',
           query: `query CodeshareIdCodeshareReconnectQuery($codeshareId: String!, $codeHistoryAfter: String, $codeHistoryFirst: Int!) {
-            codeshare(id: $codeshareId) { id slug title modeName tabSize migratedAt canEdit { me userIds } codeHistory(after: $codeHistoryAfter, first: $codeHistoryFirst) { edges { node { id historyId value createdAt createdBy { me userId clientId } } cursor } } }
+            codeshare(id: $codeshareId) {
+              id slug title modeName tabSize migratedAt canEdit { me userIds }
+              files { id name modeName content updatedAt lastClientId }
+              codeHistory(after: $codeHistoryAfter, first: $codeHistoryFirst) { edges { node { id historyId value createdAt createdBy { me userId clientId } } cursor } }
+            }
           }`,
           variables: {
             codeshareId: codeshare.id,
@@ -1452,11 +1790,48 @@
       document.title = `${codeshare.title || codeshare.shortId} - CodeeFlow`;
       syncBrowserUrlToSlug(codeshare.slug || toUrlSlug(codeshare.title, codeshare.shortId));
 
-      const modeSelect = document.getElementById('codeshare-mode-select');
-      if (modeSelect && modeSelect.value !== codeshare.modeName) {
-        modeSelect.value = codeshare.modeName;
+      // Sync Multi-Tab / Multi-File Rooms
+      if (Array.isArray(updated.files) && updated.files.length > 0) {
+        const incomingIds = new Set(updated.files.map((f) => f.id));
+        for (const key of Array.from(tabDocs.keys())) {
+          if (key !== 'main' && !incomingIds.has(key)) {
+            tabDocs.delete(key);
+          }
+        }
+        roomFiles = updated.files.map((rf) => {
+          const clone = Object.assign({}, rf);
+          if (clone.id !== 'main') {
+            const doc = getOrCreateDocForFile(clone);
+            if (
+              clone.lastClientId !== clientId &&
+              typeof clone.content === 'string' &&
+              doc.getValue() !== clone.content
+            ) {
+              const prevCursor = doc.getCursor();
+              suppressEditorChanges = true;
+              doc.setValue(clone.content);
+              try {
+                doc.setCursor(prevCursor);
+              } catch (_) {}
+              suppressEditorChanges = false;
+            }
+          }
+          return clone;
+        });
+        if (!incomingIds.has(activeTabId)) {
+          switchToFileTab('main', { focusEditor: false });
+        } else {
+          renderFileTabs();
+        }
       }
-      applyLanguageMode(codeshare.modeName);
+
+      const activeFile = getActiveFile();
+      const targetMode = (activeFile && activeFile.modeName) || codeshare.modeName || 'Plain Text';
+      const modeSelect = document.getElementById('codeshare-mode-select');
+      if (modeSelect && modeSelect.value !== targetMode) {
+        modeSelect.value = targetMode;
+      }
+      applyLanguageMode(targetMode);
 
       const tabSelect = document.getElementById('codeshare-tabsize-select');
       if (tabSelect && String(tabSelect.value) !== String(codeshare.tabSize)) {
@@ -1473,6 +1848,7 @@
       if (titleInput) titleInput.disabled = !editable;
       if (modeSelect) modeSelect.disabled = !editable;
       if (tabSelect) tabSelect.disabled = !editable;
+      renderFileTabs();
 
       const viewOnlyCheck = document.getElementById('view-only-checkbox');
       if (viewOnlyCheck) {
@@ -1501,7 +1877,12 @@
         .request({
           operationName: 'updateCodeshareMutation',
           query: `mutation updateCodeshareMutation($input: UpdateCodeshareInput!) {
-            updateCodeshare(input: $input) { codeshare { id slug title modeName tabSize canEdit { me userIds } } }
+            updateCodeshare(input: $input) {
+              codeshare {
+                id slug title modeName tabSize canEdit { me userIds }
+                files { id name modeName content updatedAt lastClientId }
+              }
+            }
           }`,
           variables: {
             input: Object.assign({ id: codeshare.id }, patch)
@@ -1613,9 +1994,28 @@
     if (modeSelect) {
       modeSelect.addEventListener('change', (e) => {
         const modeName = e.target.value;
-        codeshare.modeName = modeName;
+        const activeFile = getActiveFile();
+        if (activeFile) {
+          activeFile.modeName = modeName;
+          const modeEntry = Catalog.MODES_BY_NAME[modeName];
+          if (modeEntry && modeEntry.ext && modeEntry.ext.length > 0 && activeFile.name) {
+            const dotIdx = activeFile.name.lastIndexOf('.');
+            const baseStem = dotIdx > 0 ? activeFile.name.slice(0, dotIdx) : activeFile.name;
+            activeFile.name = `${baseStem}.${modeEntry.ext[0]}`;
+          }
+          renderFileTabs();
+          sendFileAction({
+            type: 'rename',
+            id: activeFile.id,
+            name: activeFile.name,
+            modeName
+          });
+        }
+        if (activeTabId === 'main') {
+          codeshare.modeName = modeName;
+          throttledUpdateCodeshare({ modeName });
+        }
         applyLanguageMode(modeName);
-        throttledUpdateCodeshare({ modeName });
       });
     }
 
@@ -1862,16 +2262,24 @@
     const downloadBtn = document.getElementById('codeshare-download-button');
     if (downloadBtn) {
       downloadBtn.addEventListener('click', () => {
+        const activeFile = getActiveFile();
+        const activeMode = (activeFile && activeFile.modeName) || codeshare.modeName || 'Plain Text';
         const modeEntry =
-          Catalog.MODES_BY_NAME[codeshare.modeName] || Catalog.MODES_BY_NAME['Plain Text'];
+          Catalog.MODES_BY_NAME[activeMode] || Catalog.MODES_BY_NAME['Plain Text'];
         const ext = (modeEntry.ext && modeEntry.ext[0]) || 'txt';
-        const baseName = (codeshare.title || codeshare.shortId || 'codeeflow')
-          .replace(/[^a-zA-Z0-9_-]/g, '_');
+        let downloadName = activeFile && activeFile.name ? activeFile.name.trim() : '';
+        if (!downloadName) {
+          const baseName = (codeshare.title || codeshare.shortId || 'codeeflow')
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+          downloadName = `${baseName}.${ext}`;
+        } else if (!downloadName.includes('.')) {
+          downloadName = `${downloadName}.${ext}`;
+        }
         const blob = new Blob([cm.getValue()], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${baseName}.${ext}`;
+        a.download = downloadName;
         document.body.appendChild(a);
         a.click();
         a.remove();

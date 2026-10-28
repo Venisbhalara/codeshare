@@ -187,6 +187,7 @@
   ];
 
   const MODES_BY_NAME = {};
+  const EXT_TO_MODE_NAME = {};
   MODES.forEach((entry) => {
     const mime = entry.mime || (entry.mimes ? entry.mimes[0] : 'text/plain');
     MODES_BY_NAME[entry.name] = {
@@ -195,7 +196,69 @@
       mode: entry.mode,
       ext: entry.ext || ['txt']
     };
+    if (Array.isArray(entry.ext)) {
+      entry.ext.forEach((ext) => {
+        const lowerExt = String(ext).toLowerCase();
+        if (!EXT_TO_MODE_NAME[lowerExt]) {
+          EXT_TO_MODE_NAME[lowerExt] = entry.name;
+        }
+      });
+    }
   });
+  // Explicit priority overrides for common extensions
+  EXT_TO_MODE_NAME['js'] = 'JavaScript';
+  EXT_TO_MODE_NAME['mjs'] = 'JavaScript';
+  EXT_TO_MODE_NAME['cjs'] = 'JavaScript';
+  EXT_TO_MODE_NAME['ts'] = 'TypeScript';
+  EXT_TO_MODE_NAME['tsx'] = 'TypeScript-JSX';
+  EXT_TO_MODE_NAME['jsx'] = 'JSX';
+  EXT_TO_MODE_NAME['css'] = 'CSS';
+  EXT_TO_MODE_NAME['scss'] = 'SCSS';
+  EXT_TO_MODE_NAME['html'] = 'HTML';
+  EXT_TO_MODE_NAME['htm'] = 'HTML';
+  EXT_TO_MODE_NAME['md'] = 'Markdown';
+  EXT_TO_MODE_NAME['markdown'] = 'Markdown';
+  EXT_TO_MODE_NAME['json'] = 'JSON';
+  EXT_TO_MODE_NAME['py'] = 'Python';
+  EXT_TO_MODE_NAME['sql'] = 'SQL';
+  EXT_TO_MODE_NAME['sh'] = 'Shell';
+  EXT_TO_MODE_NAME['yml'] = 'YAML';
+  EXT_TO_MODE_NAME['yaml'] = 'YAML';
+  EXT_TO_MODE_NAME['txt'] = 'Plain Text';
+
+  function inferModeNameFromFilename(filename, fallback = DEFAULT_MODE_NAME) {
+    const clean = String(filename || '').trim();
+    if (!clean) return fallback;
+    for (let i = 0; i < MODES.length; i++) {
+      if (MODES[i].file && MODES[i].file.test(clean)) {
+        return MODES[i].name;
+      }
+    }
+    const dotIdx = clean.lastIndexOf('.');
+    if (dotIdx !== -1 && dotIdx < clean.length - 1) {
+      const ext = clean.slice(dotIdx + 1).toLowerCase();
+      if (EXT_TO_MODE_NAME[ext]) {
+        return EXT_TO_MODE_NAME[ext];
+      }
+    }
+    return fallback;
+  }
+
+  function defaultFilenameForMode(modeName) {
+    const entry = MODES_BY_NAME[modeName] || MODES_BY_NAME[DEFAULT_MODE_NAME];
+    const ext = (entry && entry.ext && entry.ext[0]) || 'txt';
+    if (ext === 'js') return 'index.js';
+    if (ext === 'ts') return 'index.ts';
+    if (ext === 'tsx') return 'App.tsx';
+    if (ext === 'jsx') return 'App.jsx';
+    if (ext === 'py') return 'main.py';
+    if (ext === 'html') return 'index.html';
+    if (ext === 'css') return 'styles.css';
+    if (ext === 'md' || ext === 'markdown') return 'notes.md';
+    if (ext === 'json') return 'data.json';
+    if (ext === 'sql') return 'query.sql';
+    return `main.${ext}`;
+  }
 
   return {
     DEFAULT_KEYMAP,
@@ -206,7 +269,9 @@
     TAB_SIZES,
     THEMES,
     MODES,
-    MODES_BY_NAME
+    MODES_BY_NAME,
+    inferModeNameFromFilename,
+    defaultFilenameForMode
   };
 });
 

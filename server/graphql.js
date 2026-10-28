@@ -191,6 +191,15 @@ function formatCodeshareNode(cs, viewerRawUserId, options = {}) {
     ? cs.canEditUserIds.map((uid) => encodeRelayId('User', uid))
     : null;
 
+  const roomFiles = db.ensureCodeshareFiles(cs).map((f) => ({
+    id: String(f.id || 'main'),
+    name: String(f.name || 'index.js'),
+    modeName: String(f.modeName || cs.modeName || 'Plain Text'),
+    content: f.id === 'main' ? '' : String(f.content || ''),
+    updatedAt: f.updatedAt || cs.updatedAt || cs.createdAt,
+    lastClientId: f.lastClientId || null
+  }));
+
   return {
     id: encodeRelayId('Codeshare', cs.id),
     shortId: cs.id,
@@ -202,6 +211,7 @@ function formatCodeshareNode(cs, viewerRawUserId, options = {}) {
     migratedAt: cs.migratedAt || null,
     createdAt: cs.createdAt,
     updatedAt: cs.updatedAt || cs.createdAt,
+    files: roomFiles,
     createdBy: {
       me: cs.createdByUserId === viewerRawUserId,
       userId: encodeRelayId('User', cs.createdByUserId),

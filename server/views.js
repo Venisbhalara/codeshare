@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.16" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.17" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.16" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.17" />
 </head>`;
 }
 
@@ -233,9 +233,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.16"></script>
-  <script src="/shared/ot.js?v=v3.40.16"></script>
-  <script src="/shared/catalog.js?v=v3.40.16"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.17"></script>
+  <script src="/shared/ot.js?v=v3.40.17"></script>
+  <script src="/shared/catalog.js?v=v3.40.17"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -243,7 +243,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.16"></script>
+  <script src="/-/js/app.js?v=v3.40.17"></script>
 </body>
 </html>`;
 }
@@ -255,6 +255,41 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
   const userTheme = 'eclipse';
   const editable = Boolean(codeshare.canEdit && codeshare.canEdit.me && !codeshare.migratedAt);
   const currentSlug = codeshare.slug || codeshare.shortId;
+  const roomFiles =
+    Array.isArray(codeshare.files) && codeshare.files.length
+      ? codeshare.files
+      : [
+          {
+            id: 'main',
+            name: Catalog.defaultFilenameForMode(codeshare.modeName),
+            modeName: codeshare.modeName || 'Plain Text'
+          }
+        ];
+
+  const initialTabsHtml = roomFiles
+    .map((file, idx) => {
+      const isActive = idx === 0;
+      const ext = file.name && file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'txt';
+      return `<li class="editor-tab-item ${isActive ? 'active' : ''}" data-tab-id="${escapeHtml(file.id)}" role="presentation">
+        <button
+          type="button"
+          class="editor-tab-btn mono"
+          role="tab"
+          aria-selected="${isActive ? 'true' : 'false'}"
+          data-select-tab="${escapeHtml(file.id)}"
+          title="Click to switch tab • Double-click to rename (${escapeHtml(file.modeName || 'Plain Text')})"
+        >
+          <span class="file-ext-dot" data-ext="${escapeHtml(ext)}" aria-hidden="true"></span>
+          <span class="editor-tab-name" data-tab-name="${escapeHtml(file.id)}">${escapeHtml(file.name)}</span>
+        </button>
+        ${
+          editable && file.id !== 'main'
+            ? `<button type="button" class="editor-tab-close" data-close-tab="${escapeHtml(file.id)}" title="Delete file tab" aria-label="Delete ${escapeHtml(file.name)}">×</button>`
+            : ''
+        }
+      </li>`;
+    })
+    .join('');
 
   return `${renderHead({
     title: `${codeshare.title || codeshare.shortId} - CodeeFlow`,
@@ -272,6 +307,22 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
 
     <main class="editor-stage">
       <section class="editor-canvas" data-lenis-prevent aria-label="Collaborative Code Editor">
+        <div class="editor-tabs-header" role="region" aria-label="Room Files">
+          <ul id="editor-tabs-list" class="editor-tabs-list" role="tablist" aria-label="Files in this room">
+            ${initialTabsHtml}
+          </ul>
+          <button
+            type="button"
+            id="add-file-tab-btn"
+            class="editor-tab-add-btn"
+            title="Add New File Tab"
+            aria-label="Add New File Tab"
+            ${editable ? '' : 'hidden'}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>New File</span>
+          </button>
+        </div>
         <div id="editor-container"></div>
         <div id="permalink-banner" class="permalink-banner" hidden aria-live="polite">
           <span class="permalink-badge mono" id="permalink-range-badge">#L1</span>
@@ -286,6 +337,8 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
           <button type="button" id="permalink-clear-btn" class="permalink-clear-btn" title="Clear line highlight (Esc)" aria-label="Clear line highlight">✕</button>
         </div>
         <div class="editor-status-pill" aria-live="polite">
+          <span id="status-mode-label" class="mono">${escapeHtml(roomFiles[0].modeName || codeshare.modeName || 'Plain Text')}</span>
+          <span class="status-dot-sep" aria-hidden="true">•</span>
           <span id="status-cursor-label" class="mono">Ln 1, Col 1</span>
           <span class="status-dot-sep" aria-hidden="true">•</span>
           <button type="button" id="status-permalink-btn" class="status-permalink-btn mono" title="Click to create & copy permalink for current line or selection (or click any line number, Shift+Click for range)">

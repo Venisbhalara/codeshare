@@ -144,6 +144,7 @@ app.get('/new', (req, res) => {
 // 4b. Join Existing Codeshare Route (`GET /join?room=...`)
 app.get('/join', (req, res) => {
   const { session } = getOrCreateSession(req, res);
+  const prevActiveId = session && session.activeCodeshareId ? String(session.activeCodeshareId) : '';
   if (session) db.setSessionActiveCodeshare(session.sid, null);
   const rawInput = String((req.query && req.query.room) || '').trim();
   if (!rawInput) {
@@ -172,6 +173,16 @@ app.get('/join', (req, res) => {
     .replace(/\s+/g, '-')
     .replace(/[^a-zA-Z0-9_-]/g, '')
     .slice(0, 64);
+
+  if (
+    prevActiveId &&
+    targetSlug !== prevActiveId &&
+    targetSlug.startsWith(prevActiveId) &&
+    !db.getCodeshareByShortId(targetSlug)
+  ) {
+    const stripped = targetSlug.slice(prevActiveId.length).replace(/^[-_]+/, '');
+    if (stripped) targetSlug = stripped;
+  }
 
   if (!targetSlug) {
     res.redirect(302, '/');
@@ -285,6 +296,25 @@ app.get('/_/admin', (req, res) => {
   );
 });
 
+// 9b. Nested Room Slug Redirect (`GET /:oldCodeshareId/:customCodeshareId`)
+// If a user appends `/mycode` after an existing room URL `/2dtwWA/mycode`, redirect cleanly to `/mycode`.
+app.get('/:oldCodeshareId/:customCodeshareId', (req, res, next) => {
+  const firstSeg = String(req.params.oldCodeshareId || '').trim();
+  if (firstSeg === '-' || firstSeg === 'shared' || firstSeg === 'api' || firstSeg === 'admin') {
+    next();
+    return;
+  }
+  const rawCustom = String(req.params.customCodeshareId || '').trim();
+  const cleanCustom = /^[a-zA-Z0-9_-]+$/.test(rawCustom)
+    ? rawCustom
+    : db.toUrlSlug(rawCustom, '');
+  if (cleanCustom) {
+    res.redirect(302, `/${encodeURIComponent(cleanCustom)}`);
+    return;
+  }
+  next();
+});
+
 // 10. Collaborative Room Route (`GET /:codeshareId`)
 app.get('/:codeshareId', (req, res) => {
   const rawShortId = String(req.params.codeshareId || '').trim();
@@ -305,6 +335,39 @@ app.get('/:codeshareId', (req, res) => {
   }
 
   const { user, session, apiHeaders } = getOrCreateSession(req, res);
+
+  // Guard against accidental concatenation of the previously active room ID
+  // in front of a custom room code (e.g., `/2dtwWA` -> `/2dtwWAmycode`).
+  let refererId = '';
+  try {
+    const ref = req.get('referer');
+    if (ref) {
+      const refUrl = new URL(ref);
+      const refPath = decodeURIComponent(refUrl.pathname.replace(/^\/+|\/+$/g, '')).trim();
+      if (/^[a-zA-Z0-9_-]+$/.test(refPath)) refererId = refPath;
+    }
+  } catch (_) {}
+
+  const candidatePrefixes = [
+    session && session.activeCodeshareId ? String(session.activeCodeshareId) : '',
+    refererId
+  ].filter(Boolean);
+
+  if (!db.getCodeshareByShortId(shortId)) {
+    for (const prefixId of candidatePrefixes) {
+      if (shortId !== prefixId && shortId.startsWith(prefixId)) {
+        const strippedCustomSlug = db.toUrlSlug(
+          shortId.slice(prefixId.length).replace(/^[-_]+/, ''),
+          ''
+        );
+        if (strippedCustomSlug && strippedCustomSlug !== prefixId) {
+          res.redirect(302, `/${encodeURIComponent(strippedCustomSlug)}`);
+          return;
+        }
+      }
+    }
+  }
+
   // Each URL (:codeshareId) is strictly its own independent room.
   // If no room exists at this URL yet, create a brand-new empty room at this URL
   // while keeping all previous rooms and their code intact at their own URLs.

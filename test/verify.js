@@ -513,6 +513,25 @@ async function runVerification() {
     assert(oldUrlCheckRes.body.includes('Hello Codeshare!'));
     console.log(`✓ URL Isolation verified: /${newUrlRoomId} opens empty while /${shortId} preserves all its code.`);
 
+    // Verify Custom Room Code Prefix Stripping (e.g. /<shortId>mycustomcode -> 302 /mycustomcode)
+    const concatRes = await httpRequest(port, {
+      path: `/${shortId}mycustomcode`,
+      method: 'GET',
+      headers: { Cookie: cookieHeader }
+    });
+    assert.strictEqual(concatRes.status, 302);
+    assert.strictEqual(concatRes.headers.location, '/mycustomcode');
+
+    const nestedSlugRes = await httpRequest(port, {
+      path: `/${shortId}/mycustomcode`,
+      method: 'GET',
+      headers: { Cookie: cookieHeader }
+    });
+    assert.strictEqual(nestedSlugRes.status, 302);
+    assert.strictEqual(nestedSlugRes.headers.location, '/mycustomcode');
+    assert(appJsRes.body.includes('stripCurrentRoomIdPrefix'));
+    console.log('✓ Custom URL prefix-stripping & editor scroll lock verified.');
+
     wsA.close();
     wsB.close();
   } finally {

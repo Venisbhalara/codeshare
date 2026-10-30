@@ -545,6 +545,30 @@ a {
   min-inline-size: 0;
   max-inline-size: clamp(80px, 28vw, 260px);
   overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.room-title-pill:hover {
+  border-color: var(--accent-primary);
+}
+
+.room-title-inline-input {
+  width: 110px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  color: var(--text-primary);
+  padding: 0;
+}
+
+.room-title-inline-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.65;
 }
 
 @supports (max-inline-size: 1cqi) {
@@ -1043,13 +1067,25 @@ a {
 /* ==========================================================================
    Editor Workspace Layout — Floating Frosted Glass Studio (`/[codeshareId]`)
    ========================================================================== */
+html:has(.workspace-shell),
+body:has(.workspace-shell) {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
 .workspace-shell {
+  position: fixed;
+  inset: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
   block-size: 100dvh;
-  overflow: clip;
+  overflow: hidden;
 }
 
 .migration-banner {
@@ -1264,9 +1300,11 @@ a {
 }
 
 #editor-container {
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
   position: relative;
+  overflow: hidden;
+  contain: strict;
 }
 
 /* ==========================================================================
@@ -1561,12 +1599,24 @@ a {
 }
 
 .CodeMirror {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
   height: 100% !important;
   font-family: var(--font-mono) !important;
   font-size: 13.5px !important;
   line-height: 1.68 !important;
-  padding: 14px 0;
+  padding: 0 !important;
   forced-color-adjust: none;
+}
+
+.CodeMirror-scroll {
+  box-sizing: content-box !important;
+  height: 100% !important;
+  margin-bottom: -50px !important;
+  margin-right: -50px !important;
+  padding-bottom: 50px !important;
+  overscroll-behavior: contain;
 }
 
 /* Warm Frosted Studio Light & Dark Enhancement for CodeMirror */
@@ -1699,7 +1749,7 @@ a {
 }
 
 .CodeMirror-lines {
-  padding: 8px 0 !important;
+  padding: 14px 0 44px 0 !important;
 }
 
 .CodeMirror pre.CodeMirror-line,
@@ -1773,7 +1823,11 @@ a {
   .CodeMirror {
     font-size: 13px !important;
     line-height: 1.62 !important;
-    padding: 10px 0;
+    padding: 0 !important;
+  }
+
+  .CodeMirror-lines {
+    padding: 10px 0 40px 0 !important;
   }
 
   .cm-s-eclipse .CodeMirror-linenumber,

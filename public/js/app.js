@@ -616,6 +616,20 @@
       window.location.pathname.replace(/^\/+|\/+$/g, '')
     ).trim();
 
+    // Lock outer viewport scroll so pressing Enter or moving cursor in CodeMirror never bounces the page
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+      window.scrollTo(0, 0);
+    }
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (window.scrollY !== 0 || window.scrollX !== 0) {
+          window.scrollTo(0, 0);
+        }
+      },
+      { passive: true }
+    );
+
     function toUrlSlug(title, fallbackId) {
       if (!title || typeof title !== 'string') return fallbackId;
       const slug = title
@@ -2060,6 +2074,17 @@
 
     const titleInput = document.getElementById('codeshare-title-input');
     const slugPreviewEl = document.getElementById('live-slug-preview');
+    const roomTitlePillEl = document.getElementById('room-title-pill');
+
+    function stripCurrentRoomIdPrefix(val) {
+      let str = String(val || '').trim();
+      const curId = String(codeshare.shortId || '').trim();
+      if (curId && str !== curId && str.startsWith(curId)) {
+        const rest = str.slice(curId.length).replace(/^[-_]+/, '');
+        if (rest) str = rest;
+      }
+      return str;
+    }
 
     function extractSlugFromUrlInput(rawVal) {
       let cleaned = String(rawVal || '').trim();
@@ -2072,7 +2097,7 @@
           cleaned = parts.length ? decodeURIComponent(parts[parts.length - 1]) : '';
         }
       } catch (_) {}
-      return cleaned;
+      return stripCurrentRoomIdPrefix(cleaned);
     }
 
     function navigateToUrlSlug(rawUrlOrSlug) {
@@ -2087,24 +2112,44 @@
 
     if (titleInput) {
       titleInput.addEventListener('input', (e) => {
-        const val = e.target.value;
-        codeshare.title = val;
+        let val = stripCurrentRoomIdPrefix(e.target.value);
+        if (val !== e.target.value) {
+          e.target.value = val;
+        }
+        const resolvedTitle = val || codeshare.shortId;
+        codeshare.title = resolvedTitle;
         const navTitle = document.getElementById('navbar-room-title');
-        if (navTitle) navTitle.textContent = val || codeshare.shortId;
-        document.title = `${val || codeshare.shortId} - CodeeFlow`;
-        throttledUpdateCodeshare({ title: val });
+        if (navTitle) navTitle.textContent = resolvedTitle;
+        if (slugPreviewEl && document.activeElement !== slugPreviewEl) {
+          slugPreviewEl.textContent = toUrlSlug(val, codeshare.shortId);
+        }
+        document.title = `${resolvedTitle} - CodeeFlow`;
+        throttledUpdateCodeshare({ title: resolvedTitle });
+      });
+      titleInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (e.isComposing || e.keyCode === 229) return;
+          navigateToUrlSlug(titleInput.value);
+        }
       });
     }
 
     if (slugPreviewEl) {
+      slugPreviewEl.addEventListener('focus', () => {
+        if (slugPreviewEl.textContent.trim() === codeshare.shortId) {
+          slugPreviewEl.textContent = '';
+        }
+      });
       slugPreviewEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
           if (e.isComposing || e.keyCode === 229) {
             return;
           }
+          const rawText = slugPreviewEl.textContent;
           slugPreviewEl.blur();
-          navigateToUrlSlug(slugPreviewEl.textContent);
+          navigateToUrlSlug(rawText);
         } else if (e.key === 'Escape') {
           e.preventDefault();
           slugPreviewEl.textContent = codeshare.shortId;
@@ -2112,7 +2157,55 @@
         }
       });
       slugPreviewEl.addEventListener('blur', () => {
-        navigateToUrlSlug(slugPreviewEl.textContent);
+        const rawText = slugPreviewEl.textContent.trim();
+        if (!rawText) {
+          slugPreviewEl.textContent = codeshare.shortId;
+          return;
+        }
+        navigateToUrlSlug(rawText);
+      });
+    }
+
+    if (roomTitlePillEl) {
+      roomTitlePillEl.addEventListener('click', () => {
+        if (roomTitlePillEl.querySelector('input')) return;
+        const navTitle = document.getElementById('navbar-room-title');
+        if (!navTitle) return;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'room-title-inline-input';
+        input.value = '';
+        input.placeholder = codeshare.shortId;
+        input.setAttribute('aria-label', 'Enter custom room URL code');
+        navTitle.hidden = true;
+        roomTitlePillEl.appendChild(input);
+        input.focus();
+
+        let finished = false;
+        const commitPillEdit = (shouldNavigate) => {
+          if (finished) return;
+          finished = true;
+          const rawVal = input.value.trim();
+          input.remove();
+          navTitle.hidden = false;
+          if (shouldNavigate && rawVal) {
+            navigateToUrlSlug(rawVal);
+          }
+        };
+
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            if (ev.isComposing || ev.keyCode === 229) return;
+            commitPillEdit(true);
+          } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            commitPillEdit(false);
+          }
+        });
+        input.addEventListener('blur', () => {
+          commitPillEdit(true);
+        });
       });
     }
 

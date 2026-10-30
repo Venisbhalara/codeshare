@@ -25,7 +25,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.24" />
+  <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.25" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -35,7 +35,7 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
       : ''
   }
-  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.24" />
+  <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.25" />
 </head>`;
 }
 
@@ -79,7 +79,7 @@ function renderNavbar({ me, codeshare = null }) {
       ${
         codeshare
           ? `<span class="topbar-divider" aria-hidden="true">/</span>
-             <div class="room-title-pill">
+             <div class="room-title-pill" id="room-title-pill" title="Click to change custom room URL code">
                <span id="navbar-room-title">${escapeHtml(codeshare.title || codeshare.shortId)}</span>
              </div>
              <span id="readonly-badge" class="brand-badge" ${isViewOnly ? '' : 'hidden'}>View-Only</span>`
@@ -252,9 +252,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
-  <script src="/shared/lenis.min.js?v=v3.40.24"></script>
-  <script src="/shared/ot.js?v=v3.40.24"></script>
-  <script src="/shared/catalog.js?v=v3.40.24"></script>
+  <script src="/shared/lenis.min.js?v=v3.40.25"></script>
+  <script src="/shared/ot.js?v=v3.40.25"></script>
+  <script src="/shared/catalog.js?v=v3.40.25"></script>
   ${
     includeCodeMirror
       ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
@@ -262,7 +262,7 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
       : ''
   }
-  <script src="/-/js/app.js?v=v3.40.24"></script>
+  <script src="/-/js/app.js?v=v3.40.25"></script>
 </body>
 </html>`;
 }
@@ -382,10 +382,13 @@ function renderRoomPage({ me, codeshare, apiHeaders }) {
             id="codeshare-title-input"
             type="text"
             class="text-input"
-            value="${escapeHtml(codeshare.title || codeshare.shortId)}"
+            value="${escapeHtml(
+              codeshare.title && codeshare.title !== codeshare.shortId ? codeshare.title : ''
+            )}"
+            placeholder="${escapeHtml(codeshare.shortId)} (Enter custom code...)"
             ${editable ? '' : 'disabled'}
           />
-          <span class="room-url-preview">/<span id="live-slug-preview" contenteditable="${editable ? 'true' : 'false'}" spellcheck="false" title="Edit URL slug">${escapeHtml(currentSlug)}</span></span>
+          <span class="room-url-preview">/<span id="live-slug-preview" contenteditable="${editable ? 'true' : 'false'}" spellcheck="false" title="Click to type custom URL code">${escapeHtml(currentSlug)}</span></span>
         </div>
       </aside>
     </main>

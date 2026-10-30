@@ -529,14 +529,17 @@ a {
 .room-title-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
+  justify-content: center;
+  padding: 5px 14px;
   border-radius: 999px;
-  background-color: light-dark(rgba(255, 253, 249, 0.62), rgba(30, 37, 48, 0.58));
-  border: 1px solid light-dark(rgba(28, 36, 32, 0.09), rgba(255, 255, 255, 0.10));
-  box-shadow: inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.06));
-  font-family: var(--font-mono);
-  font-size: 12px;
+  background-color: light-dark(rgba(255, 253, 249, 0.72), rgba(30, 37, 48, 0.68));
+  border: 1px solid light-dark(rgba(28, 36, 32, 0.11), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.90), rgba(255, 255, 255, 0.08));
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  font-optical-sizing: auto;
   color: var(--text-primary);
   flex: 0 1 auto;
   min-inline-size: 0;
@@ -555,15 +558,6 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.room-title-pill .dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background-color: var(--accent-emerald);
-  box-shadow: 0 0 8px var(--accent-emerald);
 }
 
 /* Size-aware Navbar responsiveness (modern-web-guidance: responsive-design & fluid-scaling) */
@@ -590,9 +584,8 @@ a {
   }
 
   .room-title-pill {
-    padding: 4px 10px;
-    gap: 6px;
-    font-size: 11.5px;
+    padding: 4px 11px;
+    font-size: 12.5px;
     max-inline-size: clamp(72px, 34cqi, 200px);
   }
 
@@ -652,9 +645,8 @@ a {
   }
 
   .room-title-pill {
-    padding: 4px 9px;
-    gap: 5px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 12px;
     max-inline-size: clamp(64px, 26vw, 160px);
   }
 

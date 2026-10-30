@@ -250,6 +250,7 @@ async function runVerification() {
     assert(origRoomRes.body.includes('Hello Codeshare!'));
     assert(origRoomRes.body.includes('id="codeshare-copy-button"'));
     assert(!origRoomRes.body.includes('id="codeshare-snapshot-button"'));
+    assert(!origRoomRes.body.includes('<span class="dot"></span>'));
     assert(origRoomRes.body.includes('id="share-qr-canvas"'));
     assert(origRoomRes.body.includes('id="download-qr-btn"'));
     assert(origRoomRes.body.includes('id="copy-qr-btn"'));

@@ -56,9 +56,17 @@ module.exports = (req, res) => {
       const statusCode = proxyRes.statusCode || 200;
       const headers = Object.assign({}, proxyRes.headers);
 
-      // Keep redirects (e.g. /new -> /:slug) on the Vercel frontend domain
-      if (headers.location && headers.location.startsWith(backendOrigin)) {
-        headers.location = headers.location.slice(backendOrigin.length) || '/';
+      // Keep redirects (e.g. /new -> /:slug) on the Vercel frontend domain safely (prevents protocol-relative // open redirects)
+      if (headers.location) {
+        try {
+          const parsedLoc = new URL(String(headers.location), parsedBackend.origin);
+          if (parsedLoc.origin === parsedBackend.origin) {
+            const safePath = `${parsedLoc.pathname || '/'}${parsedLoc.search || ''}${parsedLoc.hash || ''}`;
+            headers.location = safePath.startsWith('//') ? '/' : safePath;
+          }
+        } catch (_) {
+          headers.location = '/';
+        }
       }
 
       const contentType = String(headers['content-type'] || '');
@@ -67,9 +75,11 @@ module.exports = (req, res) => {
         proxyRes.on('data', (chunk) => chunks.push(chunk));
         proxyRes.on('end', () => {
           let html = Buffer.concat(chunks).toString('utf8');
-          const injectScript = `<script>window.CODESHARE_BACKEND_URL = ${JSON.stringify(
-            backendOrigin
-          )};</script>`;
+          const safeOriginJson = JSON.stringify(parsedBackend.origin)
+            .replace(/</g, '\\u003c')
+            .replace(/>/g, '\\u003e')
+            .replace(/&/g, '\\u0026');
+          const injectScript = `<script>window.CODESHARE_BACKEND_URL = ${safeOriginJson};</script>`;
           if (html.includes('<script>window.__CODESHARE_BOOTSTRAP__')) {
             html = html.replace(
               '<script>window.__CODESHARE_BOOTSTRAP__',
@@ -88,9 +98,17 @@ module.exports = (req, res) => {
     }
   );
 
+  let streamPiped = false;
   proxyReq.on('error', () => {
-    // Fallback to local Express handler if Render backend is waking up
-    app(req, res);
+    if (res.headersSent || res.writableEnded) {
+      return;
+    }
+    // Only fall back to local Express handler if request stream was not consumed by pipe
+    if (!streamPiped) {
+      return app(req, res);
+    }
+    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ errors: [{ message: 'Upstream backend temporarily unavailable.' }] }));
   });
 
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
@@ -99,7 +117,10 @@ module.exports = (req, res) => {
     proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyStr));
     proxyReq.write(bodyStr);
     proxyReq.end();
+  } else if (req.method === 'GET' || req.method === 'HEAD') {
+    proxyReq.end();
   } else {
+    streamPiped = true;
     req.pipe(proxyReq);
   }
 };

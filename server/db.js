@@ -15,6 +15,10 @@ const {
   DEFAULT_MODE_NAME,
   DEFAULT_TAB_SIZE,
   DEFAULT_THEME,
+  THEMES,
+  KEYMAPS,
+  MODES,
+  TAB_SIZES,
   inferModeNameFromFilename,
   defaultFilenameForMode
 } = require('../shared/catalog');
@@ -23,13 +27,108 @@ const DATA_DIR =
   process.env.DATA_DIR ||
   (process.env.VERCEL ? path.join(os.tmpdir(), 'codeshare-data') : path.join(__dirname, '..', 'data'));
 const DB_FILE = path.join(DATA_DIR, 'store.json');
+const SECRETS_FILE = path.join(DATA_DIR, 'secrets.json');
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000; // 900,000 ms (9e5)
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_SAVED_LIMIT = 20;
-const FILE_OWNER_SECRET =
-  process.env.FILE_OWNER_SECRET || 'codeeflow-file-owner-hmac-v1-secret-9f4e2a8c';
+const MAX_PASSWORD_LENGTH = 128;
+const MAX_FILE_CONTENT_BYTES = 256 * 1024;
+
+const VALID_THEMES = new Set(Array.isArray(THEMES) ? THEMES : [DEFAULT_THEME]);
+const VALID_KEYMAPS = new Set(Array.isArray(KEYMAPS) ? KEYMAPS : [DEFAULT_KEYMAP]);
+const VALID_MODES = new Set(
+  Array.isArray(MODES) ? MODES.map((m) => m.name) : [DEFAULT_MODE_NAME]
+);
+const VALID_TAB_SIZES = new Set(
+  Array.isArray(TAB_SIZES) ? TAB_SIZES.map(String) : [String(DEFAULT_TAB_SIZE)]
+);
+
+function loadOrCreateRuntimeSecrets() {
+  let persisted = {};
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(SECRETS_FILE)) {
+      persisted = JSON.parse(fs.readFileSync(SECRETS_FILE, 'utf8')) || {};
+    }
+  } catch (_) {
+    persisted = {};
+  }
+
+  let updated = false;
+  const resolveSecret = (key) => {
+    const fromEnv = process.env[key];
+    if (typeof fromEnv === 'string' && fromEnv.trim().length >= 16) {
+      return fromEnv.trim();
+    }
+    if (typeof persisted[key] === 'string' && persisted[key].length >= 32) {
+      return persisted[key];
+    }
+    persisted[key] = crypto.randomBytes(32).toString('hex');
+    updated = true;
+    return persisted[key];
+  };
+
+  const secrets = {
+    COOKIE_SECRET: resolveSecret('COOKIE_SECRET'),
+    JWT_SECRET: resolveSecret('JWT_SECRET'),
+    FILE_OWNER_SECRET: resolveSecret('FILE_OWNER_SECRET')
+  };
+
+  if (updated) {
+    try {
+      fs.writeFileSync(SECRETS_FILE, JSON.stringify(persisted, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600
+      });
+    } catch (_) {}
+  }
+
+  return secrets;
+}
+
+const RUNTIME_SECRETS = loadOrCreateRuntimeSecrets();
+const FILE_OWNER_SECRET = RUNTIME_SECRETS.FILE_OWNER_SECRET;
+
+function hashToken(raw) {
+  return crypto.createHash('sha256').update(String(raw || '')).digest('hex');
+}
+
+function sanitizeCompanyImageUrl(rawUrl) {
+  if (rawUrl === null || typeof rawUrl === 'undefined' || String(rawUrl).trim() === '') {
+    return null;
+  }
+  const str = String(rawUrl).trim();
+  if (str.length > 512) {
+    const err = new Error('Company logo URL is too long.');
+    err.code = 'INVALID_COMPANY_IMAGE';
+    err.status = 400;
+    throw err;
+  }
+  let parsed;
+  try {
+    parsed = new URL(str);
+  } catch (_) {
+    const err = new Error('Company logo must be an absolute https:// URL.');
+    err.code = 'INVALID_COMPANY_IMAGE';
+    err.status = 400;
+    throw err;
+  }
+  const isLocalDev =
+    process.env.NODE_ENV !== 'production' &&
+    parsed.protocol === 'http:' &&
+    (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+  if (parsed.protocol !== 'https:' && !isLocalDev) {
+    const err = new Error('Company logo must use https://.');
+    err.code = 'INVALID_COMPANY_IMAGE';
+    err.status = 400;
+    throw err;
+  }
+  return parsed.toString();
+}
 
 function randomShortId(len = 6) {
   const bytes = crypto.randomBytes(len);
@@ -41,14 +140,23 @@ function randomShortId(len = 6) {
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  const raw = String(password || '');
+  if (raw.length > MAX_PASSWORD_LENGTH) {
+    const err = new Error(`Password must not exceed ${MAX_PASSWORD_LENGTH} characters.`);
+    err.code = 'INVALID_PASSWORD';
+    err.status = 400;
+    throw err;
+  }
+  const hash = crypto.scryptSync(raw, salt, 64).toString('hex');
   return `${salt}:${hash}`;
 }
 
 function verifyPassword(password, stored) {
   if (!stored || !stored.includes(':')) return false;
+  const raw = String(password || '');
+  if (!raw || raw.length > MAX_PASSWORD_LENGTH) return false;
   const [salt, key] = stored.split(':');
-  const hashBuffer = crypto.scryptSync(String(password), salt, 64);
+  const hashBuffer = crypto.scryptSync(raw, salt, 64);
   const keyBuffer = Buffer.from(key, 'hex');
   if (hashBuffer.length !== keyBuffer.length) return false;
   return crypto.timingSafeEqual(hashBuffer, keyBuffer);
@@ -93,7 +201,17 @@ class Database {
       passwordResets: {}     // token -> { token, userId, expiresAt, used }
     };
     this._saveTimer = null;
+    this._saveInFlight = false;
+    this._lastPruneAt = 0;
     this.load();
+  }
+
+  getRuntimeSecret(key) {
+    return RUNTIME_SECRETS[key] || null;
+  }
+
+  hashSessionId(sid) {
+    return hashToken(sid);
   }
 
   load() {
@@ -116,8 +234,29 @@ class Database {
     if (this._saveTimer) return;
     this._saveTimer = setTimeout(() => {
       this._saveTimer = null;
-      this.saveSync();
+      this.saveAsync();
     }, 150);
+  }
+
+  async saveAsync() {
+    if (this._saveInFlight) {
+      this.scheduleSave();
+      return;
+    }
+    this._saveInFlight = true;
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        await fs.promises.mkdir(DATA_DIR, { recursive: true });
+      }
+      const tmpFile = `${DB_FILE}.tmp.${process.pid}.${Date.now()}`;
+      const serialized = JSON.stringify(this.state, null, 2);
+      await fs.promises.writeFile(tmpFile, serialized, 'utf8');
+      await fs.promises.rename(tmpFile, DB_FILE);
+    } catch (err) {
+      console.error('[DB] Failed to write store.json asynchronously:', err.message);
+    } finally {
+      this._saveInFlight = false;
+    }
   }
 
   saveSync() {
@@ -125,7 +264,9 @@ class Database {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.state, null, 2), 'utf8');
+      const tmpFile = `${DB_FILE}.tmp.${process.pid}`;
+      fs.writeFileSync(tmpFile, JSON.stringify(this.state, null, 2), 'utf8');
+      fs.renameSync(tmpFile, DB_FILE);
     } catch (err) {
       console.error('[DB] Failed to write store.json:', err.message);
     }
@@ -144,7 +285,25 @@ class Database {
       }
     });
 
-    // Seed a demo Pro/Admin account so the user can test login or /_/admin right away
+    // Migrate any legacy plaintext session keys in store.json to SHA-256 hashes at rest
+    if (this.state.sessions && typeof this.state.sessions === 'object') {
+      const migratedSessions = {};
+      for (const [key, sess] of Object.entries(this.state.sessions)) {
+        if (!sess || !sess.userId || !sess.expiresAt) continue;
+        const isSha256Hex = /^[0-9a-f]{64}$/.test(key);
+        const sidHash = isSha256Hex ? key : hashToken(sess.sid || key);
+        migratedSessions[sidHash] = {
+          sidHash,
+          userId: sess.userId,
+          expiresAt: sess.expiresAt,
+          activeCodeshareId: sess.activeCodeshareId || null,
+          previousAnonUserId: sess.previousAnonUserId || null
+        };
+      }
+      this.state.sessions = migratedSessions;
+    }
+
+    // Seed a demo account
     const demoEmail = 'demo@codeshare.io';
     const existingDemo = Object.values(this.state.users).find(
       (u) => !u.anonymous && u.email && u.email.toLowerCase() === demoEmail
@@ -157,7 +316,10 @@ class Database {
         anonymous: false,
         name: 'Alex Mercer',
         email: demoEmail,
-        passwordHash: hashPassword('Password123!'),
+        passwordHash:
+          process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_LOGIN !== 'true'
+            ? null
+            : hashPassword(process.env.DEMO_USER_PASSWORD || 'Password123!'),
         settings: {
           theme: DEFAULT_THEME,
           keymap: DEFAULT_KEYMAP
@@ -172,6 +334,11 @@ class Database {
         updatedAt: new Date().toISOString()
       };
       this.state.users[uid] = demoUser;
+    } else if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.ALLOW_DEMO_LOGIN !== 'true'
+    ) {
+      demoUser.passwordHash = null;
     }
 
     // Seed a sample collaborative room "G8WoB4" if not present
@@ -475,36 +642,119 @@ class Database {
     );
   }
 
+  isAdminUser(userOrRawId) {
+    const user =
+      typeof userOrRawId === 'string' ? this.getUserByRawId(userOrRawId) : userOrRawId;
+    if (!user || user.anonymous) return false;
+    if (user.isAdmin === true || user.role === 'admin') return true;
+    const adminEmailsRaw = String(process.env.ADMIN_EMAILS || '').trim();
+    if (adminEmailsRaw && user.email) {
+      const allowed = adminEmailsRaw
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      if (allowed.includes(user.email.toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  transferAnonymousCodeshares(anonUserId, targetUserId) {
+    if (!anonUserId || !targetUserId || anonUserId === targetUserId) return;
+    const isPro = this.isProSubscriber(targetUserId) || this.isAdminUser(targetUserId);
+    let savedCount = this.getSavedCodesharesForUser(targetUserId).length;
+    Object.values(this.state.codeshares).forEach((cs) => {
+      if (!cs) return;
+      if (cs.createdByUserId === anonUserId) {
+        cs.createdByUserId = targetUserId;
+        if (isPro || savedCount < FREE_SAVED_LIMIT) {
+          cs.saved = true;
+          savedCount++;
+        }
+        if (Array.isArray(cs.canEditUserIds)) {
+          cs.canEditUserIds = cs.canEditUserIds.map((id) =>
+            id === anonUserId ? targetUserId : id
+          );
+        }
+      }
+      if (cs.modifiedByUserId === anonUserId) {
+        cs.modifiedByUserId = targetUserId;
+      }
+      if (Array.isArray(cs.files)) {
+        cs.files.forEach((f) => {
+          if (f && f.createdByUserId === anonUserId) {
+            f.createdByUserId = targetUserId;
+            f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, targetUserId);
+          }
+        });
+      }
+    });
+  }
+
   createSession(userId) {
     const sid = randomShortId(32);
+    const sidHash = hashToken(sid);
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    this.state.sessions[sid] = { sid, userId, expiresAt };
+    this.state.sessions[sidHash] = {
+      sidHash,
+      userId,
+      expiresAt,
+      activeCodeshareId: null,
+      previousAnonUserId: null
+    };
     this.scheduleSave();
-    return this.state.sessions[sid];
+    return Object.assign({ sid }, this.state.sessions[sidHash]);
   }
 
   getSession(sid) {
     if (!sid) return null;
-    const sess = this.state.sessions[sid];
+    const sidHash = hashToken(sid);
+    const sess = this.state.sessions[sidHash] || this.state.sessions[sid];
     if (!sess) return null;
     if (new Date(sess.expiresAt).getTime() < Date.now()) {
+      delete this.state.sessions[sidHash];
       delete this.state.sessions[sid];
       this.scheduleSave();
       return null;
     }
-    return sess;
+    return Object.assign({ sid }, sess);
   }
 
   updateSessionUser(sid, newUserId) {
-    if (this.state.sessions[sid]) {
-      this.state.sessions[sid].userId = newUserId;
+    if (!sid) return;
+    const sidHash = hashToken(sid);
+    const sess = this.state.sessions[sidHash] || this.state.sessions[sid];
+    if (sess) {
+      const oldUserId = sess.userId;
+      if (oldUserId && this.isUserAnon(oldUserId) && oldUserId !== newUserId) {
+        sess.previousAnonUserId = oldUserId;
+        this.transferAnonymousCodeshares(oldUserId, newUserId);
+      }
+      sess.userId = newUserId;
       this.scheduleSave();
     }
   }
 
+  invalidateUserSessions(rawUserId, keepSid = null) {
+    if (!rawUserId) return;
+    const keepHash = keepSid ? hashToken(keepSid) : null;
+    let changed = false;
+    for (const [key, sess] of Object.entries(this.state.sessions)) {
+      if (sess && sess.userId === rawUserId && key !== keepHash && key !== keepSid) {
+        delete this.state.sessions[key];
+        changed = true;
+      }
+    }
+    if (changed) this.scheduleSave();
+  }
+
   setSessionActiveCodeshare(sid, codeshareId) {
-    if (sid && this.state.sessions[sid]) {
-      this.state.sessions[sid].activeCodeshareId = codeshareId || null;
+    if (!sid) return;
+    const sidHash = hashToken(sid);
+    const sess = this.state.sessions[sidHash] || this.state.sessions[sid];
+    if (sess) {
+      sess.activeCodeshareId = codeshareId || null;
       this.scheduleSave();
     }
   }
@@ -514,22 +764,81 @@ class Database {
   }
 
   deleteSession(sid) {
-    if (sid && this.state.sessions[sid]) {
+    if (!sid) return;
+    const sidHash = hashToken(sid);
+    let changed = false;
+    if (this.state.sessions[sidHash]) {
+      delete this.state.sessions[sidHash];
+      changed = true;
+    }
+    if (this.state.sessions[sid]) {
       delete this.state.sessions[sid];
+      changed = true;
+    }
+    if (changed) {
       this.scheduleSave();
     }
   }
 
+  sanitizeUserSettings(rawSettings, fallbackSettings = {}) {
+    const baseTheme = VALID_THEMES.has(fallbackSettings.theme)
+      ? fallbackSettings.theme
+      : DEFAULT_THEME;
+    const baseKeymap = VALID_KEYMAPS.has(fallbackSettings.keymap)
+      ? fallbackSettings.keymap
+      : DEFAULT_KEYMAP;
+    if (!rawSettings || typeof rawSettings !== 'object') {
+      return { theme: baseTheme, keymap: baseKeymap };
+    }
+    const candidateTheme =
+      typeof rawSettings.theme === 'string' ? rawSettings.theme.trim() : baseTheme;
+    const candidateKeymap =
+      typeof rawSettings.keymap === 'string' ? rawSettings.keymap.trim() : baseKeymap;
+    return {
+      theme: VALID_THEMES.has(candidateTheme) ? candidateTheme : baseTheme,
+      keymap: VALID_KEYMAPS.has(candidateKeymap) ? candidateKeymap : baseKeymap
+    };
+  }
+
+  sanitizeDefaultCodeshareSettings(rawDefaults, fallbackDefaults = {}) {
+    const baseMode = VALID_MODES.has(fallbackDefaults.modeName)
+      ? fallbackDefaults.modeName
+      : DEFAULT_MODE_NAME;
+    const baseTab = VALID_TAB_SIZES.has(String(fallbackDefaults.tabSize))
+      ? String(fallbackDefaults.tabSize)
+      : String(DEFAULT_TAB_SIZE);
+    if (!rawDefaults || typeof rawDefaults !== 'object') {
+      return { modeName: baseMode, tabSize: baseTab };
+    }
+    const candidateMode =
+      typeof rawDefaults.modeName === 'string' ? rawDefaults.modeName.trim() : baseMode;
+    const candidateTab =
+      typeof rawDefaults.tabSize !== 'undefined' && rawDefaults.tabSize !== null
+        ? String(rawDefaults.tabSize).trim()
+        : baseTab;
+    return {
+      modeName: VALID_MODES.has(candidateMode) ? candidateMode : baseMode,
+      tabSize: VALID_TAB_SIZES.has(candidateTab) ? candidateTab : baseTab
+    };
+  }
+
   registerUser({ currentAnonUser, name, email, password, settings }) {
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    if (
+      !normalizedEmail ||
+      normalizedEmail.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
       const err = new Error('Please enter a valid email address.');
       err.code = 'INVALID_EMAIL';
       err.status = 400;
       throw err;
     }
-    if (!password || String(password).length < 6) {
-      const err = new Error('Password must be at least 6 characters.');
+    const rawPass = String(password || '');
+    if (rawPass.length < 6 || rawPass.length > MAX_PASSWORD_LENGTH) {
+      const err = new Error(
+        `Password must be between 6 and ${MAX_PASSWORD_LENGTH} characters.`
+      );
       err.code = 'INVALID_PASSWORD';
       err.status = 400;
       throw err;
@@ -543,23 +852,22 @@ class Database {
 
     const newId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const mergedSettings = {
-      theme:
-        (settings && settings.theme) ||
-        (currentAnonUser && currentAnonUser.settings && currentAnonUser.settings.theme) ||
-        DEFAULT_THEME,
-      keymap:
-        (settings && settings.keymap) ||
-        (currentAnonUser && currentAnonUser.settings && currentAnonUser.settings.keymap) ||
-        DEFAULT_KEYMAP
-    };
+    const mergedSettings = this.sanitizeUserSettings(
+      settings,
+      (currentAnonUser && currentAnonUser.settings) || {
+        theme: DEFAULT_THEME,
+        keymap: DEFAULT_KEYMAP
+      }
+    );
 
     const newUser = {
       id: newId,
       anonymous: false,
-      name: String(name || normalizedEmail.split('@')[0]).trim(),
+      name: String(name || normalizedEmail.split('@')[0])
+        .trim()
+        .slice(0, 120),
       email: normalizedEmail,
-      passwordHash: hashPassword(password),
+      passwordHash: hashPassword(rawPass),
       settings: mergedSettings,
       defaultCodeshareSettings: {
         modeName: DEFAULT_MODE_NAME,
@@ -575,28 +883,7 @@ class Database {
 
     // Transfer any codeshares created by the anonymous user to the newly registered user
     if (currentAnonUser && currentAnonUser.anonymous) {
-      Object.values(this.state.codeshares).forEach((cs) => {
-        if (cs.createdByUserId === currentAnonUser.id) {
-          cs.createdByUserId = newId;
-          cs.saved = true;
-          if (Array.isArray(cs.canEditUserIds)) {
-            cs.canEditUserIds = cs.canEditUserIds.map((id) =>
-              id === currentAnonUser.id ? newId : id
-            );
-          }
-        }
-        if (cs.modifiedByUserId === currentAnonUser.id) {
-          cs.modifiedByUserId = newId;
-        }
-        if (Array.isArray(cs.files)) {
-          cs.files.forEach((f) => {
-            if (f && f.createdByUserId === currentAnonUser.id) {
-              f.createdByUserId = newId;
-              f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, newId);
-            }
-          });
-        }
-      });
+      this.transferAnonymousCodeshares(currentAnonUser.id, newId);
     }
 
     this.scheduleSave();
@@ -620,10 +907,16 @@ class Database {
       throw new Error('User not found');
     }
     if (typeof updates.name === 'string' && updates.name.trim()) {
-      user.name = updates.name.trim();
+      user.name = updates.name.trim().slice(0, 120);
     }
     if (typeof updates.email === 'string' && updates.email.trim()) {
       const normalized = updates.email.trim().toLowerCase();
+      if (normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+        const err = new Error('Please enter a valid email address.');
+        err.code = 'INVALID_EMAIL';
+        err.status = 400;
+        throw err;
+      }
       const conflict = this.getUserByEmail(normalized);
       if (conflict && conflict.id !== user.id) {
         const err = new Error('Email is already taken.');
@@ -632,21 +925,43 @@ class Database {
       }
       user.email = normalized;
     }
-    if (typeof updates.password === 'string' && updates.password.length >= 6) {
+    if (typeof updates.password === 'string' && updates.password.length > 0) {
+      if (updates.password.length < 6 || updates.password.length > MAX_PASSWORD_LENGTH) {
+        const err = new Error(
+          `Password must be between 6 and ${MAX_PASSWORD_LENGTH} characters.`
+        );
+        err.code = 'INVALID_PASSWORD';
+        err.status = 400;
+        throw err;
+      }
       user.passwordHash = hashPassword(updates.password);
     }
     if (updates.settings) {
-      user.settings = Object.assign({}, user.settings, updates.settings);
+      user.settings = this.sanitizeUserSettings(updates.settings, user.settings);
     }
+    const isProOrAdmin = this.isProSubscriber(rawUserId) || this.isAdminUser(user);
     if (updates.defaultCodeshareSettings) {
-      user.defaultCodeshareSettings = Object.assign(
-        {},
-        user.defaultCodeshareSettings,
-        updates.defaultCodeshareSettings
+      if (!isProOrAdmin) {
+        const err = new Error(
+          'Custom default CodeeFlow settings require an active Pro subscription.'
+        );
+        err.code = 'PRO_REQUIRED';
+        err.status = 403;
+        throw err;
+      }
+      user.defaultCodeshareSettings = this.sanitizeDefaultCodeshareSettings(
+        updates.defaultCodeshareSettings,
+        user.defaultCodeshareSettings
       );
     }
     if (typeof updates.companyImage !== 'undefined') {
-      user.companyImage = updates.companyImage || null;
+      if (!isProOrAdmin && updates.companyImage) {
+        const err = new Error('Custom company branding requires an active Pro subscription.');
+        err.code = 'PRO_REQUIRED';
+        err.status = 403;
+        throw err;
+      }
+      user.companyImage = sanitizeCompanyImageUrl(updates.companyImage);
     }
     user.updatedAt = new Date().toISOString();
     this.scheduleSave();
@@ -658,8 +973,8 @@ class Database {
     if (!user) return false;
     // Delete user's codeshares
     Object.values(this.state.codeshares).forEach((cs) => {
-      if (cs.createdByUserId === rawUserId) {
-        this.deleteCodeshare(cs.id);
+      if (cs.createdByUserId === rawUserId && cs.id !== 'G8WoB4') {
+        this.deleteCodeshare(cs.id, rawUserId);
       }
     });
     // Delete user's subscription plans
@@ -668,6 +983,7 @@ class Database {
         delete this.state.subscriptionPlans[planId];
       }
     });
+    this.invalidateUserSessions(rawUserId);
     delete this.state.users[rawUserId];
     this.scheduleSave();
     return true;
@@ -728,9 +1044,14 @@ class Database {
   // =========================================================================
   // Codeshares & 24h Expiration Garbage Collection
   // =========================================================================
-  pruneExpiredCodeshares() {
+  pruneExpiredCodeshares(force = false) {
     const now = Date.now();
+    if (!force && now - this._lastPruneAt < 30000) {
+      return;
+    }
+    this._lastPruneAt = now;
     let changed = false;
+
     for (const [shortId, cs] of Object.entries(this.state.codeshares)) {
       if (shortId === 'G8WoB4') continue; // keep demo room alive
       const creator = this.getUserByRawId(cs.createdByUserId);
@@ -745,6 +1066,44 @@ class Database {
         }
       }
     }
+
+    // Prune expired sessions
+    const activeUserIds = new Set();
+    for (const [sidKey, sess] of Object.entries(this.state.sessions)) {
+      if (!sess || !sess.expiresAt || new Date(sess.expiresAt).getTime() < now) {
+        delete this.state.sessions[sidKey];
+        changed = true;
+      } else if (sess.userId) {
+        activeUserIds.add(sess.userId);
+      }
+    }
+
+    // Track anonymous users that still own active codeshares
+    for (const cs of Object.values(this.state.codeshares)) {
+      if (cs && cs.createdByUserId) {
+        activeUserIds.add(cs.createdByUserId);
+      }
+    }
+
+    // Prune orphaned anonymous users older than 24 hours
+    for (const [uid, u] of Object.entries(this.state.users)) {
+      if (u && u.anonymous && !activeUserIds.has(uid)) {
+        const age = now - new Date(u.createdAt || 0).getTime();
+        if (age > TWENTY_FOUR_HOURS_MS) {
+          delete this.state.users[uid];
+          changed = true;
+        }
+      }
+    }
+
+    // Prune expired or used password reset tokens
+    for (const [tokenKey, reset] of Object.entries(this.state.passwordResets)) {
+      if (!reset || reset.used || new Date(reset.expiresAt).getTime() < now) {
+        delete this.state.passwordResets[tokenKey];
+        changed = true;
+      }
+    }
+
     if (changed) this.scheduleSave();
   }
 
@@ -829,6 +1188,9 @@ class Database {
       const now = new Date().toISOString();
       const isAnon = !creatorUser || creatorUser.anonymous;
       const isPro = creatorUser && this.isProSubscriber(creatorUser.id);
+      const canSaveUnderQuota =
+        !isAnon &&
+        (isPro || this.getSavedCodesharesForUser(creatorUser.id).length < FREE_SAVED_LIMIT);
       const defaultSettings =
         isPro && creatorUser.defaultCodeshareSettings
           ? creatorUser.defaultCodeshareSettings
@@ -843,7 +1205,7 @@ class Database {
         createdByUserId: creatorUser ? creatorUser.id : 'anon:system',
         modifiedByUserId: creatorUser ? creatorUser.id : 'anon:system',
         canEditUserIds: null,
-        saved: !isAnon,
+        saved: canSaveUnderQuota,
         codeCheckpoint: null,
         migratedAt: null,
         createdAt: now,
@@ -865,7 +1227,7 @@ class Database {
     return codeshare.canEditUserIds.includes(rawUserId);
   }
 
-  updateCodeshare(shortId, rawUserId, input) {
+  updateCodeshare(shortId, rawUserId, input, options = {}) {
     const cs = this.getCodeshareByShortId(shortId);
     if (!cs) {
       const err = new Error('Codeshare not found');
@@ -879,20 +1241,87 @@ class Database {
       throw err;
     }
 
-    // Claiming/saving an anonymous codeshare on login/register
+    // Only the room creator (or admin) can modify canEdit permissions
+    if (typeof input.canEdit !== 'undefined') {
+      if (cs.createdByUserId !== rawUserId && !this.isAdminUser(rawUserId)) {
+        const err = new Error('Only the room creator can modify edit permissions.');
+        err.code = 'FORBIDDEN';
+        err.status = 403;
+        throw err;
+      }
+      if (input.canEdit && Array.isArray(input.canEdit.userIds)) {
+        if (!this.isProSubscriber(rawUserId) && !this.isAdminUser(rawUserId)) {
+          const err = new Error(
+            'View-only room permissions require an active CodeeFlow Pro subscription.'
+          );
+          err.code = 'PRO_REQUIRED';
+          err.status = 403;
+          throw err;
+        }
+        const normalizedIds = input.canEdit.userIds
+          .filter((id) => typeof id === 'string')
+          .map((id) => {
+            try {
+              if (id.startsWith('VXNlcj') || id.startsWith('TWU6')) {
+                const decoded = Buffer.from(id, 'base64').toString('utf8');
+                return decoded.replace(/^(User|Me):/, '');
+              }
+            } catch (_) {}
+            return id.replace(/^(User|Me):/, '');
+          });
+        if (cs.createdByUserId && !normalizedIds.includes(cs.createdByUserId)) {
+          normalizedIds.push(cs.createdByUserId);
+        }
+        cs.canEditUserIds = Array.from(new Set(normalizedIds));
+      } else {
+        cs.canEditUserIds = null;
+      }
+    }
+
+    // Enforce top-level edit permission check for all room modifications
+    if (!this.canUserEditCodeshare(cs, rawUserId)) {
+      const err = new Error('You do not have permission to edit this codeshare.');
+      err.code = 'FORBIDDEN';
+      err.status = 403;
+      throw err;
+    }
+
+    // Claiming/saving an anonymous codeshare on login/register:
+    // Only permitted if the caller already owns the room OR their current session was the anonymous creator
     if (input.save === true) {
       const oldCreatorId = cs.createdByUserId;
-      const creator = this.getUserByRawId(oldCreatorId);
-      if (!creator || creator.anonymous) {
-        cs.createdByUserId = rawUserId;
-        if (Array.isArray(cs.files)) {
-          cs.files.forEach((f) => {
-            if (f && (!f.createdByUserId || f.createdByUserId === oldCreatorId)) {
-              f.createdByUserId = rawUserId;
-              f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, rawUserId);
-            }
-          });
-        }
+      const previousAnonId =
+        options && options.session ? options.session.previousAnonUserId : null;
+      const isAuthorizedClaim =
+        oldCreatorId === rawUserId ||
+        (previousAnonId && oldCreatorId === previousAnonId);
+      if (!isAuthorizedClaim) {
+        const err = new Error('Only the room creator can claim or save this codeshare.');
+        err.code = 'FORBIDDEN';
+        err.status = 403;
+        throw err;
+      }
+      const isAnon = this.isUserAnon(rawUserId);
+      const isPro = this.isProSubscriber(rawUserId) || this.isAdminUser(rawUserId);
+      if (
+        !isAnon &&
+        !isPro &&
+        !cs.saved &&
+        this.getSavedCodesharesForUser(rawUserId).length >= FREE_SAVED_LIMIT
+      ) {
+        const err = new Error('Free plan limit of 20 saved codeshares reached.');
+        err.code = 'NON_PRO_CODESHARE_LIMIT_REACHED';
+        err.status = 403;
+        throw err;
+      }
+      cs.createdByUserId = rawUserId;
+      if (Array.isArray(cs.files)) {
+        cs.files.forEach((f) => {
+          if (f && (!f.createdByUserId || f.createdByUserId === oldCreatorId)) {
+            f.createdByUserId = rawUserId;
+            f.ownerSignature = this.computeFileOwnerSignature(cs.id, f.id, rawUserId);
+          }
+        });
       }
       cs.saved = true;
     }
@@ -901,7 +1330,7 @@ class Database {
       cs.title = input.title.slice(0, 120);
       cs.slug = cs.id;
     }
-    if (typeof input.modeName === 'string') {
+    if (typeof input.modeName === 'string' && VALID_MODES.has(input.modeName)) {
       cs.modeName = input.modeName;
       this.ensureCodeshareFiles(cs);
       const mainFile = cs.files.find((f) => f.id === 'main');
@@ -909,16 +1338,14 @@ class Database {
         mainFile.modeName = input.modeName;
       }
     }
-    if (typeof input.tabSize !== 'undefined' && input.tabSize !== null) {
+    if (
+      typeof input.tabSize !== 'undefined' &&
+      input.tabSize !== null &&
+      VALID_TAB_SIZES.has(String(input.tabSize))
+    ) {
       cs.tabSize = String(input.tabSize);
     }
     if (input.fileAction && typeof input.fileAction === 'object') {
-      if (!this.canUserEditCodeshare(cs, rawUserId)) {
-        const err = new Error('You do not have permission to edit this codeshare.');
-        err.code = 'FORBIDDEN';
-        err.status = 403;
-        throw err;
-      }
       this.ensureCodeshareFiles(cs);
       const action = input.fileAction;
       const nowIso = new Date().toISOString();
@@ -945,11 +1372,12 @@ class Database {
               name,
               action.modeName || DEFAULT_MODE_NAME
             );
+            const content = String(action.content || '').slice(0, MAX_FILE_CONTENT_BYTES);
             cs.files.push({
               id: newId,
               name,
               modeName,
-              content: String(action.content || ''),
+              content,
               createdByUserId: rawUserId,
               renameRev: 0,
               ownerSignature: this.computeFileOwnerSignature(cs.id, newId, rawUserId),
@@ -1013,7 +1441,7 @@ class Database {
       } else if (action.type === 'update' && action.id) {
         const target = cs.files.find((f) => f.id === action.id);
         if (target && target.id !== 'main') {
-          target.content = String(action.content ?? '');
+          target.content = String(action.content ?? '').slice(0, MAX_FILE_CONTENT_BYTES);
           if (action.name && this.canUserRenameFile(cs, target, rawUserId, action.ownerToken)) {
             target.name = sanitizeFilename(action.name, target.name);
             target.modeName = inferModeNameFromFilename(target.name, target.modeName);
@@ -1023,32 +1451,45 @@ class Database {
           target.lastClientId = action.clientId || null;
         }
       } else if (action.type === 'delete' && action.id) {
+        const target = cs.files.find((f) => f.id === action.id);
+        if (!target) {
+          const err = new Error('File not found.');
+          err.code = 'FILE_NOT_FOUND';
+          err.status = 404;
+          throw err;
+        }
+        if (
+          !this.canUserRenameFile(cs, target, rawUserId, action.ownerToken) &&
+          cs.createdByUserId !== rawUserId
+        ) {
+          const err = new Error('Only the file creator or room owner can delete this file.');
+          err.code = 'FILE_DELETE_FORBIDDEN';
+          err.status = 403;
+          throw err;
+        }
         if (action.id !== 'main' && cs.files.length > 1) {
           cs.files = cs.files.filter((f) => f.id !== action.id);
         }
       }
     }
-    if (typeof input.canEdit !== 'undefined') {
-      if (input.canEdit && Array.isArray(input.canEdit.userIds)) {
-        // Normalize any Relay IDs or raw IDs
-        cs.canEditUserIds = input.canEdit.userIds.map((id) => {
-          try {
-            if (id.startsWith('VXNlcj') || id.startsWith('TWU6')) {
-              const decoded = Buffer.from(id, 'base64').toString('utf8');
-              return decoded.replace(/^(User|Me):/, '');
-            }
-          } catch (_) {}
-          return id.replace(/^(User|Me):/, '');
-        });
-      } else {
-        cs.canEditUserIds = null;
-      }
-    }
+
     if (input.codeCheckpoint && input.codeCheckpoint.codeHistoryId && input.codeCheckpoint.value) {
-      cs.codeCheckpoint = {
-        codeHistoryId: input.codeCheckpoint.codeHistoryId,
-        value: input.codeCheckpoint.value
-      };
+      let rawHistoryNodeId = String(input.codeCheckpoint.codeHistoryId);
+      try {
+        rawHistoryNodeId = decodeRelayId('CodeHistory', rawHistoryNodeId);
+      } catch (_) {}
+      const list = this.getCodeHistories(shortId);
+      const foundIdx = list.findIndex((item) => item.id === rawHistoryNodeId);
+      if (foundIdx !== -1) {
+        let composed = new TextOperation();
+        for (let i = 0; i <= foundIdx; i++) {
+          composed = composed.compose(TextOperation.fromJSON(list[i].value));
+        }
+        cs.codeCheckpoint = {
+          codeHistoryId: encodeRelayId('CodeHistory', list[foundIdx].id),
+          value: JSON.stringify(composed.toJSON())
+        };
+      }
     }
 
     cs.modifiedByUserId = rawUserId;
@@ -1057,8 +1498,24 @@ class Database {
     return cs;
   }
 
-  deleteCodeshare(shortId) {
-    if (!this.state.codeshares[shortId]) return false;
+  deleteCodeshare(shortId, requesterRawUserId = null) {
+    const cs = this.state.codeshares[shortId];
+    if (!cs) return false;
+    if (shortId === 'G8WoB4' && !this.isAdminUser(requesterRawUserId)) {
+      const err = new Error('The default demo room cannot be deleted.');
+      err.code = 'FORBIDDEN';
+      err.status = 403;
+      throw err;
+    }
+    if (
+      !requesterRawUserId ||
+      (cs.createdByUserId !== requesterRawUserId && !this.isAdminUser(requesterRawUserId))
+    ) {
+      const err = new Error('Only the room creator can delete this codeshare.');
+      err.code = 'FORBIDDEN';
+      err.status = 403;
+      throw err;
+    }
     delete this.state.codeshares[shortId];
     delete this.state.codeHistories[shortId];
     delete this.state.codeshareUsers[shortId];
@@ -1195,13 +1652,19 @@ class Database {
   }
 
   upsertCodeshareUser({ shortId, rawUserId, cursor, color }) {
+    const cs = this.getCodeshareByShortId(shortId);
+    if (!cs) return null;
     if (!this.state.codeshareUsers[shortId]) {
       this.state.codeshareUsers[shortId] = {};
     }
     const roomUsers = this.state.codeshareUsers[shortId];
     const now = new Date().toISOString();
     let record = roomUsers[rawUserId];
-    const assignedColor = color || (record && record.color) || colorForUser(rawUserId);
+    const safeColor =
+      typeof color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(color.trim())
+        ? color.trim()
+        : null;
+    const assignedColor = safeColor || (record && record.color) || colorForUser(rawUserId);
 
     if (!record) {
       record = {
@@ -1209,13 +1672,18 @@ class Database {
         codeshareId: shortId,
         createdByUserId: rawUserId,
         color: assignedColor,
-        cursor: cursor || { position: -1, selectionEnd: -1 },
+        cursor: cursor
+          ? {
+              position: typeof cursor.position === 'number' ? cursor.position : -1,
+              selectionEnd: typeof cursor.selectionEnd === 'number' ? cursor.selectionEnd : -1
+            }
+          : { position: -1, selectionEnd: -1 },
         createdAt: now,
         modifiedAt: now
       };
       roomUsers[rawUserId] = record;
     } else {
-      if (color) record.color = color;
+      if (safeColor) record.color = safeColor;
       if (cursor) {
         record.cursor = {
           position: typeof cursor.position === 'number' ? cursor.position : -1,
@@ -1240,21 +1708,24 @@ class Database {
   // =========================================================================
   createPasswordReset(email) {
     const user = this.getUserByEmail(email);
-    const token = randomShortId(24);
+    const token = crypto.randomBytes(24).toString('hex');
+    const tokenHash = hashToken(token);
     if (user) {
-      this.state.passwordResets[token] = {
-        token,
+      this.state.passwordResets[tokenHash] = {
+        tokenHash,
         userId: user.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + FIFTEEN_MINUTES_MS).toISOString(),
         used: false
       };
       this.scheduleSave();
     }
-    return token;
+    return { token, userExists: Boolean(user) };
   }
 
   usePasswordReset(token, newPassword) {
-    const reset = this.state.passwordResets[token];
+    const rawToken = String(token || '').trim();
+    const tokenHash = hashToken(rawToken);
+    const reset = this.state.passwordResets[tokenHash];
     if (!reset || reset.used || new Date(reset.expiresAt).getTime() < Date.now()) {
       const err = new Error('Invalid or expired password reset token.');
       err.status = 400;
@@ -1262,6 +1733,7 @@ class Database {
     }
     const user = this.updateUser(reset.userId, { password: newPassword });
     reset.used = true;
+    this.invalidateUserSessions(reset.userId);
     this.scheduleSave();
     return user;
   }

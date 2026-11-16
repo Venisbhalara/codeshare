@@ -9,4 +9,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FILE_OWNER_SECRET
+        generateValue: true
 

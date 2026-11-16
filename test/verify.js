@@ -532,6 +532,169 @@ async function runVerification() {
     assert(appJsRes.body.includes('stripCurrentRoomIdPrefix'));
     console.log('✓ Custom URL prefix-stripping & editor scroll lock verified.');
 
+    // 3e. Security Hardening & Access Control Regression Suite
+    assert(typeof homeRes.headers['content-security-policy'] === 'string');
+    assert.strictEqual(homeRes.headers['x-frame-options'], 'DENY');
+    assert.strictEqual(homeRes.headers['x-content-type-options'], 'nosniff');
+    assert.strictEqual(homeRes.headers['referrer-policy'], 'same-origin');
+
+    // CRITICAL-01: Unauthenticated /_/admin and admin GraphQL operations are blocked (403)
+    const adminPageRes = await httpRequest(port, {
+      path: '/_/admin',
+      method: 'GET',
+      headers: { Cookie: userBCookieHeader }
+    });
+    assert.strictEqual(adminPageRes.status, 403);
+
+    const adminMutRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: userBCookieHeader }
+      },
+      JSON.stringify({
+        operationName: 'createSubscriptionPlanMutation',
+        query: 'mutation createSubscriptionPlanMutation($input: CreateSubscriptionPlanInput!) { createSubscriptionPlan(input: $input) { subscriptionPlan { id } } }',
+        variables: { input: { name: 'Hacked Free Plan', price: '0', interval: 'month' } }
+      })
+    );
+    const adminMutJson = JSON.parse(adminMutRes.body);
+    assert(adminMutJson.errors && adminMutJson.errors[0].code === 'FORBIDDEN');
+
+    // CRITICAL-02: createPasswordReset does NOT leak resetToken in GraphQL response
+    const resetRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      },
+      JSON.stringify({
+        operationName: 'createPasswordResetMutation',
+        query: 'mutation createPasswordResetMutation($input: CreatePasswordResetInput!) { createPasswordReset(input: $input) { email } }',
+        variables: { input: { email: 'demo@codeflow.io' } }
+      })
+    );
+    assert(!resetRes.body.includes('resetToken'));
+
+    // CRITICAL-04 & HIGH-01: User B cannot delete User A's codeshare, change canEdit, or delete User A's file
+    const unauthorizedDeleteRoomRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: userBCookieHeader }
+      },
+      JSON.stringify({
+        operationName: 'deleteCodeshareMutation',
+        query: 'mutation deleteCodeshareMutation($input: DeleteCodeshareInput!) { deleteCodeshare(input: $input) { codeshare { id } } }',
+        variables: { input: { id: encodeRelayId('Codeshare', shortId) } }
+      })
+    );
+    const unauthorizedDeleteRoomJson = JSON.parse(unauthorizedDeleteRoomRes.body);
+    assert(unauthorizedDeleteRoomJson.errors && unauthorizedDeleteRoomJson.errors[0].code === 'FORBIDDEN');
+
+    const unauthorizedLockRoomRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: userBCookieHeader }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareMutation',
+        query: 'mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }',
+        variables: { input: { id: encodeRelayId('Codeshare', shortId), canEdit: false } }
+      })
+    );
+    const unauthorizedLockRoomJson = JSON.parse(unauthorizedLockRoomRes.body);
+    assert(unauthorizedLockRoomJson.errors && unauthorizedLockRoomJson.errors[0].code === 'FORBIDDEN');
+
+    const unauthorizedDeleteFileRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: userBCookieHeader }
+      },
+      JSON.stringify({
+        operationName: 'updateCodeshareFileActionMutation',
+        query: 'mutation updateCodeshareFileActionMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }',
+        variables: {
+          input: {
+            id: encodeRelayId('Codeshare', shortId),
+            fileAction: { type: 'delete', id: 'file-txt-2' }
+          }
+        }
+      })
+    );
+    const unauthorizedDeleteFileJson = JSON.parse(unauthorizedDeleteFileRes.body);
+    assert(
+      unauthorizedDeleteFileJson.errors &&
+        unauthorizedDeleteFileJson.errors[0].code === 'FILE_DELETE_FORBIDDEN'
+    );
+
+    // HIGH-02: Cross-Origin GraphQL POST & WebSocket Upgrade (CSWSH) are rejected with 403
+    const crossOriginGqlRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://evil-attacker.example.com'
+        }
+      },
+      JSON.stringify({ query: 'query { viewer { me { id } } }' })
+    );
+    assert.strictEqual(crossOriginGqlRes.status, 403);
+
+    const cswshBlocked = await new Promise((resolve) => {
+      const wsEvil = new WebSocket(`ws://127.0.0.1:${port}/-/api/graphql`, 'codeshare-graphql-ws', {
+        headers: { Origin: 'https://evil-attacker.example.com' }
+      });
+      wsEvil.once('unexpected-response', (_req, res) => {
+        wsEvil.terminate();
+        resolve(res.statusCode === 403);
+      });
+      wsEvil.once('error', () => resolve(true));
+      wsEvil.once('open', () => {
+        wsEvil.close();
+        resolve(false);
+      });
+    });
+    assert.strictEqual(cswshBlocked, true);
+
+    // HIGH-03: Subresource image CSRF to /logout is blocked (403)
+    const imgLogoutRes = await httpRequest(port, {
+      path: '/logout',
+      method: 'GET',
+      headers: {
+        Cookie: cookieHeader,
+        'Sec-Fetch-Dest': 'image'
+      }
+    });
+    assert.strictEqual(imgLogoutRes.status, 403);
+
+    // HIGH-03 & CRITICAL-05: Path traversal in keymap/theme is sanitized and Pro self-upgrade requires auth/payment
+    const unauthProRes = await httpRequest(
+      port,
+      {
+        path: '/-/api/graphql',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: userBCookieHeader }
+      },
+      JSON.stringify({
+        operationName: 'subscribeToCodeshareProMutation',
+        query: 'mutation subscribeToCodeshareProMutation($input: SubscribeToCodeshareProInput!) { subscribeToCodesharePro(input: $input) { me { id isPro } } }',
+        variables: { input: { planId: 'Q3VzdG9tT2JqZWN0OnBsYW5fMW1vbnRo' } }
+      })
+    );
+    const unauthProJson = JSON.parse(unauthProRes.body);
+    assert(unauthProJson.errors && unauthProJson.errors.length > 0);
+    console.log('✓ Security Hardening & Access Control Regression Suite verified.');
+
     wsA.close();
     wsB.close();
   } finally {

@@ -699,14 +699,26 @@
 
     // Apply initial theme & keymap assets
     function applyTheme(themeName) {
-      const themeSlug = themeName.split(' ')[0];
-      ensureStylesheet(`${CDN_BASE}/theme/${themeSlug}.min.css`);
-      if (cm) cm.setOption('theme', themeName);
+      const validTheme =
+        Array.isArray(Catalog.THEMES) && Catalog.THEMES.includes(themeName)
+          ? themeName
+          : Catalog.DEFAULT_THEME;
+      const themeSlug = validTheme.split(' ')[0];
+      if (/^[a-zA-Z0-9_-]+$/.test(themeSlug)) {
+        ensureStylesheet(`${CDN_BASE}/theme/${themeSlug}.min.css`);
+      }
+      if (cm) cm.setOption('theme', validTheme);
     }
 
     async function applyKeymap(keymapName) {
-      await ensureScript(`${CDN_BASE}/keymap/${keymapName}.min.js`);
-      if (cm) cm.setOption('keyMap', keymapName);
+      const validKeymap =
+        Array.isArray(Catalog.KEYMAPS) && Catalog.KEYMAPS.includes(keymapName)
+          ? keymapName
+          : Catalog.DEFAULT_KEYMAP;
+      if (/^[a-zA-Z0-9_-]+$/.test(validKeymap)) {
+        await ensureScript(`${CDN_BASE}/keymap/${validKeymap}.min.js`);
+      }
+      if (cm) cm.setOption('keyMap', validKeymap);
     }
 
     async function applyLanguageMode(modeName) {
@@ -1255,7 +1267,8 @@
       tabDocs.delete(tabId);
       sendFileAction({
         type: 'delete',
-        id: tabId
+        id: tabId,
+        ownerToken: targetFile.ownerToken || null
       });
       showToast(`Closed ${removed.name}`, { duration: 2000 });
       if (activeTabId === tabId) {
@@ -3022,24 +3035,55 @@
     // 4-Stage Ad/Sponsor Waterfall (`SponsorAllInOne`)
     const sponsorRoot = document.getElementById('sponsor-bar');
     if (sponsorRoot && !(me && me.isPro) && !creatorIsPro) {
+      const renderHideAdsButton = () => {
+        const hideBtn = document.createElement('button');
+        hideBtn.type = 'button';
+        hideBtn.className = 'btn btn-ghost';
+        hideBtn.style.cssText = 'height:22px;padding:0 8px;font-size:11px;';
+        hideBtn.id = 'hide-ads-btn';
+        hideBtn.textContent = 'Hide Ads';
+        if (proDialog) {
+          hideBtn.addEventListener('click', () => proDialog.showModal());
+        }
+        return hideBtn;
+      };
+
       fetch('/-/sp.json?k=CESIKK7N&t=f')
         .then((r) => r.json())
         .then((data) => {
           const ad = data && data.ads && data.ads[0];
-          if (ad && ad.statlink) {
-            sponsorRoot.innerHTML = `<span class="sponsor-tag">Sponsor</span>
-              <a href="${ad.statlink}" target="_blank" rel="noopener noreferrer">${ad.description}</a>
-              <button type="button" class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;" id="hide-ads-btn">Hide Ads</button>`;
-            const hideBtn = document.getElementById('hide-ads-btn');
-            if (hideBtn && proDialog) {
-              hideBtn.addEventListener('click', () => proDialog.showModal());
-            }
+          const rawLink = ad && typeof ad.statlink === 'string' ? ad.statlink.trim() : '';
+          const isSafeAdLink =
+            (rawLink.startsWith('/') && !rawLink.startsWith('//')) ||
+            /^https:\/\//i.test(rawLink);
+          if (ad && isSafeAdLink) {
+            sponsorRoot.textContent = '';
+            const tagEl = document.createElement('span');
+            tagEl.className = 'sponsor-tag';
+            tagEl.textContent = 'Sponsor';
+
+            const linkEl = document.createElement('a');
+            linkEl.href = rawLink;
+            linkEl.target = '_blank';
+            linkEl.rel = 'noopener noreferrer';
+            linkEl.textContent = String(ad.description || '');
+
+            sponsorRoot.appendChild(tagEl);
+            sponsorRoot.appendChild(document.createTextNode(' '));
+            sponsorRoot.appendChild(linkEl);
+            sponsorRoot.appendChild(document.createTextNode(' '));
+            sponsorRoot.appendChild(renderHideAdsButton());
           }
         })
         .catch(() => {
           // Stage 3 SimpleSadFace fallback
-          sponsorRoot.innerHTML = `<span>Please don't block our ads :( — Ad sponsors keep CodeeFlow free.</span>
-            <button type="button" class="btn btn-ghost" style="height:22px;padding:0 8px;font-size:11px;" id="hide-ads-btn">Hide Ads</button>`;
+          sponsorRoot.textContent = '';
+          const msgEl = document.createElement('span');
+          msgEl.textContent =
+            "Please don't block our ads :( — Ad sponsors keep CodeeFlow free.";
+          sponsorRoot.appendChild(msgEl);
+          sponsorRoot.appendChild(document.createTextNode(' '));
+          sponsorRoot.appendChild(renderHideAdsButton());
         });
     }
   }
@@ -3047,6 +3091,14 @@
   // =========================================================================
   // 10. Auth Modals, Pro Checkout, Saved Codeshares (/codes), Settings & Admin
   // =========================================================================
+  function sanitizeLocalRedirect(rawTarget) {
+    const str = String(rawTarget || '').trim();
+    if (!str || !str.startsWith('/') || str.startsWith('//') || /[\r\n\\]/.test(str)) {
+      return window.location.pathname || '/codes';
+    }
+    return str;
+  }
+
   function initGlobalForms() {
     // Home Page Studio Preview One-Click Copy Snippet Button (`#home-copy-preview-btn`)
     const homeCopyBtn = document.getElementById('home-copy-preview-btn');
@@ -3136,21 +3188,26 @@
             variables: { input: { email, password } }
           });
 
-          // If inside an anonymous-created room, claim/save it automatically!
+          // If inside an anonymous-created room that this viewer created, claim/save it automatically!
           if (
             BOOTSTRAP.codeshare &&
             BOOTSTRAP.codeshare.createdBy &&
+            BOOTSTRAP.codeshare.createdBy.me &&
             BOOTSTRAP.codeshare.createdBy.user &&
             BOOTSTRAP.codeshare.createdBy.user.anonymous
           ) {
-            await gqlClient.request({
-              operationName: 'updateCodeshareMutation',
-              query: `mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }`,
-              variables: { input: { id: BOOTSTRAP.codeshare.id, save: true } }
-            });
+            try {
+              await gqlClient.request({
+                operationName: 'updateCodeshareMutation',
+                query: `mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }`,
+                variables: { input: { id: BOOTSTRAP.codeshare.id, save: true } }
+              });
+            } catch (_) {}
           }
 
-          const redirectTarget = form.getAttribute('data-redirect') || window.location.pathname;
+          const redirectTarget = sanitizeLocalRedirect(
+            form.getAttribute('data-redirect') || window.location.pathname
+          );
           window.location.href = redirectTarget;
         } catch (err) {
           if (errBox) errBox.textContent = err.message || 'Login failed.';
@@ -3192,17 +3249,22 @@
           if (
             BOOTSTRAP.codeshare &&
             BOOTSTRAP.codeshare.createdBy &&
+            BOOTSTRAP.codeshare.createdBy.me &&
             BOOTSTRAP.codeshare.createdBy.user &&
             BOOTSTRAP.codeshare.createdBy.user.anonymous
           ) {
-            await gqlClient.request({
-              operationName: 'updateCodeshareMutation',
-              query: `mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }`,
-              variables: { input: { id: BOOTSTRAP.codeshare.id, save: true } }
-            });
+            try {
+              await gqlClient.request({
+                operationName: 'updateCodeshareMutation',
+                query: `mutation updateCodeshareMutation($input: UpdateCodeshareInput!) { updateCodeshare(input: $input) { codeshare { id } } }`,
+                variables: { input: { id: BOOTSTRAP.codeshare.id, save: true } }
+              });
+            } catch (_) {}
           }
 
-          const redirectTarget = form.getAttribute('data-redirect') || window.location.pathname;
+          const redirectTarget = sanitizeLocalRedirect(
+            form.getAttribute('data-redirect') || window.location.pathname
+          );
           window.location.href = redirectTarget;
         } catch (err) {
           if (errBox) errBox.textContent = err.message || 'Registration failed.';

@@ -400,6 +400,66 @@ class PubSubBroker {
 
 const pubsub = new PubSubBroker();
 
+const AUTH_RATE_WINDOW_MS = 60 * 1000;
+const MAX_AUTH_ATTEMPTS_PER_WINDOW = 15;
+const authRateBuckets = new Map(); // key -> { count, resetAt }
+
+const MAX_WS_CONNECTIONS_PER_IP = 40;
+const wsIpConnections = new Map(); // ip -> count
+
+function checkAuthRateLimit(context, bucketKey = 'auth') {
+  const req = context && context.req;
+  const ip =
+    (req && (req.ip || (req.socket && req.socket.remoteAddress))) ||
+    (context && context.session && context.session.sidHash) ||
+    'local';
+  const key = `${bucketKey}:${ip}`;
+  const now = Date.now();
+  let bucket = authRateBuckets.get(key);
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + AUTH_RATE_WINDOW_MS };
+    authRateBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > MAX_AUTH_ATTEMPTS_PER_WINDOW) {
+    const err = new Error('Too many authentication attempts. Please try again in a minute.');
+    err.code = 'TOO_MANY_REQUESTS';
+    err.status = 429;
+    throw err;
+  }
+}
+
+function sanitizeGraphQLTextForRouting(rawQuery) {
+  return String(rawQuery || '')
+    .replace(/"""[\s\S]*?"""/g, '""')
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/#[^\r\n]*/g, '');
+}
+
+function requireAdminAccess(user, context = {}) {
+  if (db.isAdminUser(user)) {
+    return true;
+  }
+  const req = context && context.req;
+  const configuredSecret =
+    typeof process.env.ADMIN_SECRET === 'string' ? process.env.ADMIN_SECRET.trim() : '';
+  const providedSecret =
+    req && req.headers && typeof req.headers['x-admin-secret'] === 'string'
+      ? req.headers['x-admin-secret'].trim()
+      : '';
+  if (configuredSecret.length >= 16 && providedSecret.length === configuredSecret.length) {
+    const a = Buffer.from(providedSecret, 'utf8');
+    const b = Buffer.from(configuredSecret, 'utf8');
+    if (require('crypto').timingSafeEqual(a, b)) {
+      return true;
+    }
+  }
+  const err = new Error('Forbidden: Administrator privileges required.');
+  err.code = 'FORBIDDEN';
+  err.status = 403;
+  throw err;
+}
+
 // ============================================================================
 // GraphQL Operation Executor (Supports both Relay Queries/Mutations & Named Ops)
 // ============================================================================
@@ -411,15 +471,19 @@ async function executeGraphQLOperation({
 }) {
   const { user, session, res } = context;
   const viewerRawId = user ? user.id : 'anon:guest';
-  const opText = String(query || '');
-  const opName = String(operationName || '');
+  const opText = sanitizeGraphQLTextForRouting(query);
+  const opName = String(operationName || '').trim();
+  const isQueryDoc = /^\s*query\b/i.test(opText) && !/^\s*mutation\b/i.test(opText);
   const input = variables.input || variables || {};
 
   try {
     // ------------------------------------------------------------------------
     // 1. MUTATIONS
     // ------------------------------------------------------------------------
-    if (opName.includes('createCodeshare') || /\bcreateCodeshare\s*\(/.test(opText)) {
+    if (
+      !isQueryDoc &&
+      (opName.includes('createCodeshare') || /\bcreateCodeshare\b/.test(opText))
+    ) {
       const cs = db.createCodeshare(user);
       const node = formatCodeshareNode(cs, viewerRawId);
       return {
@@ -434,7 +498,10 @@ async function executeGraphQLOperation({
       };
     }
 
-    if (opName.includes('createCodeHistory') || /\bcreateCodeHistory\s*\(/.test(opText)) {
+    if (
+      !isQueryDoc &&
+      (opName.includes('createCodeHistory') || /\bcreateCodeHistory\b/.test(opText))
+    ) {
       const shortId = decodeShortCodeshareId(input.codeshareId);
       const historyRecord = db.createCodeHistory({
         shortId,
@@ -457,9 +524,12 @@ async function executeGraphQLOperation({
       };
     }
 
-    if (opName.includes('updateCodeshare') || /\bupdateCodeshare\s*\(/.test(opText)) {
+    if (
+      !isQueryDoc &&
+      (opName.includes('updateCodeshare') || /\bupdateCodeshare\b/.test(opText))
+    ) {
       const shortId = decodeShortCodeshareId(input.id || input.codeshareId);
-      const cs = db.updateCodeshare(shortId, viewerRawId, input);
+      const cs = db.updateCodeshare(shortId, viewerRawId, input, { session });
       pubsub.publishCodeshareUpdated(cs.id, cs);
       return {
         data: {
@@ -470,10 +540,13 @@ async function executeGraphQLOperation({
       };
     }
 
-    if (opName.includes('deleteCodeshare') || /\bdeleteCodeshare\s*\(/.test(opText)) {
+    if (
+      !isQueryDoc &&
+      (opName.includes('deleteCodeshare') || /\bdeleteCodeshare\b/.test(opText))
+    ) {
       const shortId = decodeShortCodeshareId(input.id || input.codeshareId);
       const encodedId = encodeRelayId('Codeshare', shortId);
-      db.deleteCodeshare(shortId);
+      db.deleteCodeshare(shortId, viewerRawId);
       return {
         data: {
           deleteCodeshare: {
@@ -484,8 +557,9 @@ async function executeGraphQLOperation({
     }
 
     if (
-      opName.includes('upsertMeIntoCodeshareUsers') ||
-      /\bupsertMeIntoCodeshareUsers\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('upsertMeIntoCodeshareUsers') ||
+        /\bupsertMeIntoCodeshareUsers\b/.test(opText))
     ) {
       const shortId = decodeShortCodeshareId(input.codeshareId);
       const record = db.upsertCodeshareUser({
@@ -494,18 +568,21 @@ async function executeGraphQLOperation({
         cursor: input.cursor,
         color: input.color
       });
-      pubsub.publishCodeshareUserUpserted(shortId, record);
+      if (record) {
+        pubsub.publishCodeshareUserUpserted(shortId, record);
+      }
       return {
         data: {
           upsertMeIntoCodeshareUsers: {
-            codeshareUserEdge: formatCodeshareUserEdge(record, 0, viewerRawId)
+            codeshareUserEdge: record ? formatCodeshareUserEdge(record, 0, viewerRawId) : null
           }
         }
       };
     }
 
     // --- AUTH MUTATIONS (Executed over HTTP POST with x-codeshare-auth-mutation: true) ---
-    if (opName === 'LoginFormMutation' || /\blogin\s*\(/.test(opText)) {
+    if (!isQueryDoc && (opName === 'LoginFormMutation' || /\blogin\s*\(/.test(opText))) {
+      checkAuthRateLimit(context, 'login');
       const loggedInUser = db.loginUser({
         email: input.email,
         password: input.password
@@ -520,13 +597,14 @@ async function executeGraphQLOperation({
         data: {
           login: {
             me: formatMeNode(loggedInUser),
-            token: signJwt(loggedInUser.id)
+            token: signJwt(loggedInUser.id, session ? session.sid : null)
           }
         }
       };
     }
 
-    if (opName === 'RegisterFormMutation' || /\bregister\s*\(/.test(opText)) {
+    if (!isQueryDoc && (opName === 'RegisterFormMutation' || /\bregister\s*\(/.test(opText))) {
+      checkAuthRateLimit(context, 'register');
       const registeredUser = db.registerUser({
         currentAnonUser: user,
         name: input.name,
@@ -544,13 +622,13 @@ async function executeGraphQLOperation({
         data: {
           register: {
             me: formatMeNode(registeredUser),
-            token: signJwt(registeredUser.id)
+            token: signJwt(registeredUser.id, session ? session.sid : null)
           }
         }
       };
     }
 
-    if (opName.includes('logout') || /\blogout\s*\(/.test(opText)) {
+    if (!isQueryDoc && (opName.includes('logout') || /\blogout\b/.test(opText))) {
       const newAnon = db.createAnonymousUser();
       if (session) {
         db.updateSessionUser(session.sid, newAnon.id);
@@ -562,13 +640,19 @@ async function executeGraphQLOperation({
         data: {
           logout: {
             me: formatMeNode(newAnon),
-            token: signJwt(newAnon.id)
+            token: signJwt(newAnon.id, session ? session.sid : null)
           }
         }
       };
     }
 
-    if (opName.includes('deleteMe') || /\bdeleteMe\s*\(/.test(opText)) {
+    if (!isQueryDoc && (opName.includes('deleteMe') || /\bdeleteMe\b/.test(opText))) {
+      if (!user || user.anonymous) {
+        const err = new Error('Authentication required to delete account.');
+        err.code = 'UNAUTHORIZED';
+        err.status = 401;
+        throw err;
+      }
       const deletedId = encodeRelayId('Me', viewerRawId);
       db.deleteUser(viewerRawId);
       const newAnon = db.createAnonymousUser();
@@ -588,7 +672,7 @@ async function executeGraphQLOperation({
       };
     }
 
-    if (opName.includes('updateMe') || /\bupdateMe\s*\(/.test(opText)) {
+    if (!isQueryDoc && (opName.includes('updateMe') || /\bupdateMe\b/.test(opText))) {
       const updatedUser = db.updateUser(viewerRawId, input);
       pubsub.publishMeUpdated(viewerRawId, updatedUser);
       return {
@@ -601,14 +685,35 @@ async function executeGraphQLOperation({
     }
 
     if (
-      opName.includes('subscribeToCodesharePro') ||
-      /\bsubscribeToCodesharePro\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('subscribeToCodesharePro') ||
+        /\bsubscribeToCodesharePro\b/.test(opText))
     ) {
+      if (!user || user.anonymous) {
+        const err = new Error('Please log in or create an account before upgrading to Pro.');
+        err.code = 'UNAUTHORIZED';
+        err.status = 401;
+        throw err;
+      }
+      const paymentMethodId = String(input.stripePaymentMethodId || '').trim();
+      const isMockCard = !paymentMethodId || /^pm_card_visa/i.test(paymentMethodId);
+      if (
+        process.env.NODE_ENV === 'production' &&
+        process.env.ALLOW_DEMO_CHECKOUT !== 'true' &&
+        isMockCard
+      ) {
+        const err = new Error(
+          'Verified Stripe payment is required to activate CodeeFlow Pro in production.'
+        );
+        err.code = 'PAYMENT_VERIFICATION_REQUIRED';
+        err.status = 402;
+        throw err;
+      }
       db.createSubscriptionPlan({
         userId: viewerRawId,
         planId: 'pro',
         isActive: true,
-        stripePaymentMethodId: input.stripePaymentMethodId || 'pm_card_visa'
+        stripePaymentMethodId: paymentMethodId || 'pm_card_visa'
       });
       const updatedUser = db.getUserByRawId(viewerRawId);
       pubsub.publishMeUpdated(viewerRawId, updatedUser);
@@ -622,21 +727,27 @@ async function executeGraphQLOperation({
     }
 
     if (
-      opName.includes('createPasswordReset') ||
-      /\bcreatePasswordReset\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('createPasswordReset') || /\bcreatePasswordReset\b/.test(opText))
     ) {
-      const token = db.createPasswordReset(input.email);
+      checkAuthRateLimit(context, 'passwordReset');
+      db.createPasswordReset(input.email);
+      // Never return resetToken in the API response payload (prevents Account Takeover)
       return {
         data: {
           createPasswordReset: {
             clientMutationId: input.clientMutationId || null,
-            resetToken: token
+            ok: true
           }
         }
       };
     }
 
-    if (opName.includes('usePasswordReset') || /\busePasswordReset\s*\(/.test(opText)) {
+    if (
+      !isQueryDoc &&
+      (opName.includes('usePasswordReset') || /\busePasswordReset\b/.test(opText))
+    ) {
+      checkAuthRateLimit(context, 'usePasswordReset');
       const updatedUser = db.usePasswordReset(input.token, input.password);
       if (session) {
         db.updateSessionUser(session.sid, updatedUser.id);
@@ -655,9 +766,11 @@ async function executeGraphQLOperation({
 
     // --- ADMIN MUTATIONS (/_/admin) ---
     if (
-      opName.includes('CreateSubscriptionPlan') ||
-      /\bcreateSubscriptionPlan\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('CreateSubscriptionPlan') ||
+        /\bcreateSubscriptionPlan\b/.test(opText))
     ) {
+      requireAdminAccess(user, context);
       let targetUserId = input.userId;
       try {
         targetUserId = decodeRelayId('User', targetUserId);
@@ -685,9 +798,11 @@ async function executeGraphQLOperation({
     }
 
     if (
-      opName.includes('updateSubscriptionPlan') ||
-      /\bupdateSubscriptionPlan\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('updateSubscriptionPlan') ||
+        /\bupdateSubscriptionPlan\b/.test(opText))
     ) {
+      requireAdminAccess(user, context);
       let rawPlanId = input.id;
       try {
         rawPlanId = decodeRelayId('SubscriptionPlan', rawPlanId);
@@ -710,9 +825,11 @@ async function executeGraphQLOperation({
     }
 
     if (
-      opName.includes('deleteSubscriptionPlan') ||
-      /\bdeleteSubscriptionPlan\s*\(/.test(opText)
+      !isQueryDoc &&
+      (opName.includes('deleteSubscriptionPlan') ||
+        /\bdeleteSubscriptionPlan\b/.test(opText))
     ) {
+      requireAdminAccess(user, context);
       let rawPlanId = input.id;
       try {
         rawPlanId = decodeRelayId('SubscriptionPlan', rawPlanId);
@@ -775,7 +892,8 @@ async function executeGraphQLOperation({
           if (!isNaN(decodedIdx)) startIdx = decodedIdx + 1;
         } catch (_) {}
       }
-      const first = typeof variables.first === 'number' ? variables.first : 20;
+      const rawFirst = typeof variables.first === 'number' ? variables.first : 20;
+      const first = Math.min(Math.max(1, rawFirst), 100);
       const slice = allSaved.slice(startIdx, startIdx + first);
       const edges = slice.map((cs, i) => ({
         node: formatCodeshareNode(cs, viewerRawId),
@@ -799,6 +917,7 @@ async function executeGraphQLOperation({
     }
 
     if (opName === 'adminQuery' || /\buser\s*\(\s*email/.test(opText)) {
+      requireAdminAccess(user, context);
       const targetUser = variables.email ? db.getUserByEmail(variables.email) : null;
       return {
         data: {
@@ -837,6 +956,15 @@ async function executeGraphQLOperation({
 // ============================================================================
 function attachWebSocketHandler(wss) {
   wss.on('connection', (ws, req) => {
+    const clientIp =
+      (req && (req.ip || (req.socket && req.socket.remoteAddress))) || '127.0.0.1';
+    const currentConnCount = wsIpConnections.get(clientIp) || 0;
+    if (currentConnCount >= MAX_WS_CONNECTIONS_PER_IP) {
+      ws.close(1008, 'Too many concurrent connections');
+      return;
+    }
+    wsIpConnections.set(clientIp, currentConnCount + 1);
+
     const { user, session } = getOrCreateSession(req, null);
     let currentUser = user;
     const rateWindow = { count: 0, resetAt: Date.now() + 5000 };
@@ -948,6 +1076,12 @@ function attachWebSocketHandler(wss) {
           }
 
           if (channel) {
+            if (channel !== 'meUpdates' && (!shortId || !db.getCodeshareByShortId(shortId))) {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'complete', id: subId }));
+              }
+              return;
+            }
             pubsub.subscribe({
               ws,
               subId,
@@ -964,7 +1098,7 @@ function attachWebSocketHandler(wss) {
           operationName: opName,
           query,
           variables,
-          context: { user: currentUser, session, res: null }
+          context: { user: currentUser, session, req, res: null }
         });
 
         if (ws.readyState === 1) {
@@ -1000,6 +1134,12 @@ function attachWebSocketHandler(wss) {
 
     ws.on('close', () => {
       clearInterval(keepAliveInterval);
+      const count = wsIpConnections.get(clientIp) || 1;
+      if (count <= 1) {
+        wsIpConnections.delete(clientIp);
+      } else {
+        wsIpConnections.set(clientIp, count - 1);
+      }
       const departed = pubsub.unsubscribeAllForSocket(ws);
       departed.forEach(({ shortId, userId }) => {
         const deletedRecord = db.removeCodeshareUser(shortId, userId);
@@ -1014,6 +1154,7 @@ function attachWebSocketHandler(wss) {
 module.exports = {
   executeGraphQLOperation,
   attachWebSocketHandler,
+  requireAdminAccess,
   pubsub,
   formatMeNode,
   formatUserNode,

@@ -7,6 +7,7 @@ const { WebSocketServer } = require('ws');
 const db = require('./db');
 const { encodeRelayId } = require('../shared/ot');
 const {
+  isAllowedOrigin,
   getOrCreateSession,
   setSessionCookies,
   browserCompatibilityGate
@@ -14,6 +15,7 @@ const {
 const {
   executeGraphQLOperation,
   attachWebSocketHandler,
+  requireAdminAccess,
   pubsub,
   formatMeNode,
   formatUserNode,
@@ -32,19 +34,65 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const HTTP_RATE_WINDOW_MS = 60 * 1000;
+const MAX_HTTP_GQL_PER_WINDOW = 240;
+const httpRateBuckets = new Map(); // ip -> { count, resetAt }
+
+function checkHttpRateLimit(req, res, next) {
+  const ip = req.ip || (req.socket && req.socket.remoteAddress) || '127.0.0.1';
+  const now = Date.now();
+  let bucket = httpRateBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + HTTP_RATE_WINDOW_MS };
+    httpRateBuckets.set(ip, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > MAX_HTTP_GQL_PER_WINDOW) {
+    res.status(429).json({
+      data: null,
+      errors: [
+        {
+          message: 'Too many requests. Please slow down.',
+          code: 'TOO_MANY_REQUESTS',
+          status: 429
+        }
+      ]
+    });
+    return;
+  }
+  next();
+}
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: http: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  );
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+
   const origin = req.headers.origin;
   if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-codeshare-auth-mutation'
-    );
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (isAllowedOrigin(origin, req)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, x-codeshare-auth-mutation'
+      );
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    } else if (req.method === 'OPTIONS') {
+      res.status(403).end();
+      return;
+    }
   }
   if (req.method === 'OPTIONS') {
     res.status(204).end();
@@ -87,14 +135,27 @@ app.get('/-/sp.json', (req, res) => {
 });
 
 // 2. GraphQL HTTP Endpoint (`POST /-/api/graphql` & `POST /api/graphql`)
-app.post(['/-/api/graphql', '/api/graphql'], async (req, res) => {
+app.post(['/-/api/graphql', '/api/graphql'], checkHttpRateLimit, async (req, res) => {
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin, req)) {
+    res.status(403).json({
+      data: null,
+      errors: [
+        {
+          message: 'Cross-origin request forbidden.',
+          code: 'CORS_FORBIDDEN',
+          status: 403
+        }
+      ]
+    });
+    return;
+  }
   const { session, user } = getOrCreateSession(req, res);
   const { operationName, query, variables } = req.body || {};
   const result = await executeGraphQLOperation({
     operationName,
     query,
     variables,
-    context: { user, session, res }
+    context: { user, session, req, res }
   });
   res.json(result);
 });
@@ -119,7 +180,7 @@ app.get(['/', '/interview', '/teach'], (req, res) => {
 });
 
 // 4. Instant Room Creation (`GET /new` -> HTTP 302 Redirect to `/:codeshareId`)
-app.get('/new', (req, res) => {
+app.get('/new', checkHttpRateLimit, (req, res) => {
   const { user, session } = getOrCreateSession(req, res);
   try {
     const cs = db.createCodeshare(user);
@@ -271,7 +332,22 @@ app.get('/register', (req, res) => {
   );
 });
 
-app.get('/logout', (req, res) => {
+function handleLogout(req, res) {
+  const fetchDest = String(req.headers['sec-fetch-dest'] || '').toLowerCase();
+  const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (
+    fetchSite === 'cross-site' ||
+    ['image', 'script', 'style', 'iframe', 'embed', 'object', 'video', 'audio'].includes(
+      fetchDest
+    )
+  ) {
+    res.status(403).send('Forbidden');
+    return;
+  }
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin, req)) {
+    res.status(403).send('Forbidden');
+    return;
+  }
   const { session } = getOrCreateSession(req, res);
   const freshAnon = db.createAnonymousUser();
   if (session) {
@@ -279,11 +355,20 @@ app.get('/logout', (req, res) => {
     setSessionCookies(res, session.sid);
   }
   res.redirect(302, '/');
-});
+}
+
+app.post('/logout', handleLogout);
+app.get('/logout', handleLogout);
 
 // 9. Internal Admin Dashboard (`GET /_/admin`)
-app.get('/_/admin', (req, res) => {
+app.get('/_/admin', checkHttpRateLimit, (req, res) => {
   const { user, apiHeaders } = getOrCreateSession(req, res);
+  try {
+    requireAdminAccess(user, { req });
+  } catch (err) {
+    res.status(err.status || 403).send('Forbidden: Administrator access required.');
+    return;
+  }
   const searchedEmail = req.query.email || 'demo@codeeflow.io';
   const foundUser = db.getUserByEmail(searchedEmail);
   res.send(
@@ -405,7 +490,12 @@ const wss = new WebSocketServer({
 attachWebSocketHandler(wss);
 
 server.on('upgrade', (req, socket, head) => {
-  if (req.url.startsWith('/-/api/graphql') || req.url.startsWith('/api/graphql')) {
+  if (req.headers && req.headers.origin && !isAllowedOrigin(req.headers.origin, req)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (req.url && (req.url.startsWith('/-/api/graphql') || req.url.startsWith('/api/graphql'))) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
     });

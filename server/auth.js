@@ -1,9 +1,12 @@
 const crypto = require('crypto');
 const db = require('./db');
 
-const COOKIE_SECRET = process.env.COOKIE_SECRET || 'codeshare-v3-hmac-cookie-secret-key-2026';
-const JWT_SECRET = process.env.JWT_SECRET || 'codeshare-v3-jwt-hs256-secret-key-2026';
+const COOKIE_SECRET = db.getRuntimeSecret('COOKIE_SECRET');
+const JWT_SECRET = db.getRuntimeSecret('JWT_SECRET');
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const ANON_BUCKET_WINDOW_MS = 60 * 1000;
+const MAX_ANON_SESSIONS_PER_IP_WINDOW = 30;
+const anonIpBuckets = new Map(); // ip -> { count, resetAt, lastSid, lastUserId }
 
 function base64UrlEncode(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(String(input), 'utf8');
@@ -18,6 +21,48 @@ function base64UrlDecode(str) {
   let b64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
   while (b64.length % 4) b64 += '=';
   return Buffer.from(b64, 'base64').toString('utf8');
+}
+
+function isAllowedOrigin(origin, req = null) {
+  if (!origin) return true;
+  let parsed;
+  try {
+    parsed = new URL(String(origin));
+  } catch (_) {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  const normalizedOrigin = parsed.origin.toLowerCase();
+  const reqHost =
+    req && req.headers && req.headers.host ? String(req.headers.host).trim().toLowerCase() : '';
+  if (reqHost && parsed.host.toLowerCase() === reqHost) {
+    return true;
+  }
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+  ) {
+    return true;
+  }
+
+  const configured = [
+    process.env.ALLOWED_ORIGINS || '',
+    process.env.APP_URL || '',
+    process.env.PUBLIC_URL || '',
+    process.env.RENDER_EXTERNAL_URL || '',
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '',
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : ''
+  ]
+    .join(',')
+    .split(',')
+    .map((item) => item.trim().replace(/\/+$/, '').toLowerCase())
+    .filter(Boolean);
+
+  return configured.includes(normalizedOrigin);
 }
 
 // Sign web.sid -> "<sid>.<hmac_base64>" matching Codeshare's web.sid.sig format
@@ -40,13 +85,14 @@ function verifySessionSignature(sid, sigCookie) {
 }
 
 // Generate HS256 JWT ("v": 2) matching Codeshare's pageProps.apiHeaders.authorization
-function signJwt(rawUserId) {
+function signJwt(rawUserId, sid = null) {
   const cleanId = String(rawUserId).replace(/^anon:/, '');
   const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS).toISOString();
   const header = { typ: 'JWT', alg: 'HS256' };
   const payload = {
     id: cleanId,
     rawUserId: String(rawUserId),
+    sidHash: sid ? db.hashSessionId(sid) : undefined,
     expiresAt,
     v: 2
   };
@@ -68,11 +114,25 @@ function verifyJwt(tokenHeader) {
   const expectedSig = base64UrlEncode(
     crypto.createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest()
   );
-  if (s !== expectedSig) return null;
+  const sigBuf = Buffer.from(String(s), 'utf8');
+  const expectedBuf = Buffer.from(String(expectedSig), 'utf8');
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
   try {
     const payload = JSON.parse(base64UrlDecode(p));
+    if (!payload || typeof payload !== 'object') return null;
     if (payload.expiresAt && new Date(payload.expiresAt).getTime() < Date.now()) {
       return null;
+    }
+    if (payload.sidHash) {
+      const boundSess = db.state && db.state.sessions && db.state.sessions[payload.sidHash];
+      if (!boundSess || new Date(boundSess.expiresAt).getTime() < Date.now()) {
+        return null;
+      }
+      if (boundSess.userId !== payload.rawUserId) {
+        return null;
+      }
     }
     return payload;
   } catch (_) {
@@ -83,18 +143,27 @@ function verifyJwt(tokenHeader) {
 function setSessionCookies(res, sid) {
   const expires = new Date(Date.now() + THIRTY_DAYS_MS);
   const sig = signSessionId(sid);
+  const secure = process.env.NODE_ENV === 'production';
   res.cookie('web.sid', sid, {
     path: '/',
     expires,
     httpOnly: true,
-    sameSite: 'lax'
+    sameSite: 'lax',
+    secure
   });
   res.cookie('web.sid.sig', sig, {
     path: '/',
     expires,
     httpOnly: true,
-    sameSite: 'lax'
+    sameSite: 'lax',
+    secure
   });
+}
+
+function clearSessionCookies(res) {
+  const secure = process.env.NODE_ENV === 'production';
+  res.clearCookie('web.sid', { path: '/', httpOnly: true, sameSite: 'lax', secure });
+  res.clearCookie('web.sid.sig', { path: '/', httpOnly: true, sameSite: 'lax', secure });
 }
 
 function parseCookiesFromHeader(cookieHeader) {
@@ -106,8 +175,12 @@ function parseCookiesFromHeader(cookieHeader) {
       const idx = pair.indexOf('=');
       if (idx === -1) return;
       const k = pair.slice(0, idx).trim();
-      const v = decodeURIComponent(pair.slice(idx + 1).trim());
-      out[k] = v;
+      const rawVal = pair.slice(idx + 1).trim();
+      try {
+        out[k] = decodeURIComponent(rawVal);
+      } catch (_) {
+        out[k] = rawVal;
+      }
     });
   return out;
 }
@@ -118,7 +191,7 @@ function parseCookiesFromHeader(cookieHeader) {
  * and an anonymous user if not logged in.
  */
 function getOrCreateSession(req, res) {
-  const cookies = req.cookies || parseCookiesFromHeader(req.headers && req.headers.cookie);
+  const cookies = (req && req.cookies) || parseCookiesFromHeader(req && req.headers && req.headers.cookie);
   const sid = cookies['web.sid'];
   const sig = cookies['web.sid.sig'];
 
@@ -127,13 +200,12 @@ function getOrCreateSession(req, res) {
     if (sess) {
       const user = db.getUserByRawId(sess.userId);
       if (user) {
-        const jwt = signJwt(user.id);
+        const jwt = signJwt(user.id, sess.sid);
         return {
           session: sess,
           user,
           apiHeaders: {
-            authorization: `token ${jwt}`,
-            'x-forwarded-for': req.ip || '127.0.0.1'
+            authorization: `token ${jwt}`
           }
         };
       }
@@ -142,7 +214,7 @@ function getOrCreateSession(req, res) {
 
   // Fallback: check Authorization header JWT (used by SSR / WebSocket connectionParams)
   const authHeader =
-    req.headers && (req.headers.authorization || req.headers.Authorization);
+    req && req.headers && (req.headers.authorization || req.headers.Authorization);
   if (authHeader) {
     const payload = verifyJwt(authHeader);
     if (payload) {
@@ -159,27 +231,60 @@ function getOrCreateSession(req, res) {
           session: sess,
           user,
           apiHeaders: {
-            authorization: `token ${signJwt(user.id)}`,
-            'x-forwarded-for': (req && req.ip) || '127.0.0.1'
+            authorization: `token ${signJwt(user.id, sess.sid)}`
           }
         };
       }
     }
   }
 
+  // Throttle cookieless session floods from a single IP
+  const clientIp =
+    (req && (req.ip || (req.socket && req.socket.remoteAddress))) || '127.0.0.1';
+  const now = Date.now();
+  let bucket = anonIpBuckets.get(clientIp);
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + ANON_BUCKET_WINDOW_MS, lastSid: null, lastUserId: null };
+    anonIpBuckets.set(clientIp, bucket);
+  }
+  bucket.count += 1;
+
+  if (
+    bucket.count > MAX_ANON_SESSIONS_PER_IP_WINDOW &&
+    bucket.lastSid &&
+    bucket.lastUserId
+  ) {
+    const existingSess = db.getSession(bucket.lastSid);
+    const existingUser = db.getUserByRawId(bucket.lastUserId);
+    if (existingSess && existingUser) {
+      if (res && typeof res.cookie === 'function') {
+        setSessionCookies(res, existingSess.sid);
+      }
+      return {
+        session: existingSess,
+        user: existingUser,
+        apiHeaders: {
+          authorization: `token ${signJwt(existingUser.id, existingSess.sid)}`
+        }
+      };
+    }
+  }
+
   // Create new anonymous user & session
   const anonUser = db.createAnonymousUser();
   const sess = db.createSession(anonUser.id);
+  bucket.lastSid = sess.sid;
+  bucket.lastUserId = anonUser.id;
+
   if (res && typeof res.cookie === 'function') {
     setSessionCookies(res, sess.sid);
   }
-  const jwt = signJwt(anonUser.id);
+  const jwt = signJwt(anonUser.id, sess.sid);
   return {
     session: sess,
     user: anonUser,
     apiHeaders: {
-      authorization: `token ${jwt}`,
-      'x-forwarded-for': (req && req.ip) || '127.0.0.1'
+      authorization: `token ${jwt}`
     }
   };
 }
@@ -237,7 +342,8 @@ function browserCompatibilityGate(req, res, next) {
         useAnywayButton.onclick = function () {
           var twoWeeks = 14 * 24 * 60 * 60 * 1000;
           var expires = new Date(Date.now() + twoWeeks).toUTCString();
-          document.cookie = 'forceBrowserCompatibility=true; path=/; expires=' + expires;
+          var sec = window.location.protocol === 'https:' ? '; Secure' : '';
+          document.cookie = 'forceBrowserCompatibility=true; path=/; SameSite=Lax' + sec + '; expires=' + expires;
           var url = new URL(window.location.href);
           url.searchParams.delete('browserGate');
           window.location.href = url.toString();
@@ -252,11 +358,13 @@ function browserCompatibilityGate(req, res, next) {
 }
 
 module.exports = {
+  isAllowedOrigin,
   signSessionId,
   verifySessionSignature,
   signJwt,
   verifyJwt,
   setSessionCookies,
+  clearSessionCookies,
   parseCookiesFromHeader,
   getOrCreateSession,
   browserCompatibilityGate

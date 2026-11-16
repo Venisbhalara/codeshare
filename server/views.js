@@ -10,9 +10,30 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function isSafeExternalImageUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol === 'https:') return true;
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    ) {
+      return true;
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
 function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
-  const safeTheme = theme === 'monokai' ? 'eclipse' : String(theme || 'eclipse');
-  const themeSlug = safeTheme.split(' ')[0];
+  const validThemes = Array.isArray(Catalog.THEMES) ? Catalog.THEMES : ['eclipse'];
+  const safeTheme =
+    theme !== 'monokai' && validThemes.includes(theme) ? String(theme) : 'eclipse';
+  const rawSlug = safeTheme.split(' ')[0];
+  const themeSlug = /^[a-zA-Z0-9_-]+$/.test(rawSlug) ? rawSlug : 'eclipse';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,18 +42,22 @@ function renderHead({ title, includeCodeMirror = false, theme = 'eclipse' }) {
   <meta name="color-scheme" content="light dark" />
   <script>
     try {
-      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light dark";
+      var savedScheme = localStorage.getItem("color-scheme");
+      document.querySelector('meta[name="color-scheme"]').content =
+        (savedScheme === "light" || savedScheme === "dark" || savedScheme === "light dark")
+          ? savedScheme
+          : "light dark";
     } catch (_) {}
   </script>
   <title>${escapeHtml(title)}</title>
   <link rel="icon" type="image/svg+xml" href="/shared/logo.svg?v=v3.40.25" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   ${
     includeCodeMirror
-      ? `<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" />`
+      ? `<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/theme/${escapeHtml(themeSlug)}.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />`
       : ''
   }
   <link rel="stylesheet" href="/-/css/styles.css?v=v3.40.25" />
@@ -53,7 +78,7 @@ function renderBrandLogo() {
 
 function renderNavbar({ me, codeshare = null }) {
   const isAnon = !me || me.anonymous;
-  const creatorCompanyImage =
+  const rawCompanyImage =
     codeshare &&
     codeshare.createdBy &&
     codeshare.createdBy.user &&
@@ -61,6 +86,7 @@ function renderNavbar({ me, codeshare = null }) {
     codeshare.createdBy.user.companyImage
       ? codeshare.createdBy.user.companyImage
       : null;
+  const creatorCompanyImage = isSafeExternalImageUrl(rawCompanyImage) ? rawCompanyImage : null;
 
   const isViewOnly =
     codeshare &&
@@ -72,7 +98,7 @@ function renderNavbar({ me, codeshare = null }) {
       <a href="/" class="brand-link" aria-label="CodeeFlow Home">
         ${
           creatorCompanyImage
-            ? `<img src="${escapeHtml(creatorCompanyImage)}" alt="Brand Logo" style="height:26px;border-radius:6px;" />`
+            ? `<img src="${escapeHtml(creatorCompanyImage)}" alt="Brand Logo" referrerpolicy="no-referrer" style="height:26px;border-radius:6px;" />`
             : renderBrandLogo()
         }
       </a>
@@ -249,7 +275,12 @@ function renderGlobalDialogs({ me, codeshare = null }) {
 
 function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, includeCodeMirror = false }) {
   const backendUrl = process.env.PUBLIC_BACKEND_URL || '';
-  const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl }).replace(/</g, '\\u003c');
+  const payload = JSON.stringify({ me, codeshare, apiHeaders, backendUrl })
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
   return `
   <script>window.__CODESHARE_BOOTSTRAP__ = ${payload};</script>
   <script src="/shared/lenis.min.js?v=v3.40.25"></script>
@@ -257,9 +288,9 @@ function renderBootstrapScripts({ me, codeshare = null, apiHeaders = {}, include
   <script src="/shared/catalog.js?v=v3.40.25"></script>
   ${
     includeCodeMirror
-      ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/addon/display/placeholder.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js"></script>`
+      ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/codemirror.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/addon/display/placeholder.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.53.2/keymap/sublime.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>`
       : ''
   }
   <script src="/-/js/app.js?v=v3.40.25"></script>
@@ -736,7 +767,11 @@ function renderSettingsPage({ me, apiHeaders }) {
 // ============================================================================
 function renderAuthPage({ me, mode = 'login', saveCodeshare = null, apiHeaders }) {
   const isLogin = mode === 'login';
-  const redirectUrl = saveCodeshare ? `/${encodeURIComponent(saveCodeshare)}` : '/codes';
+  const safeSaveSlug =
+    typeof saveCodeshare === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(saveCodeshare.trim())
+      ? saveCodeshare.trim()
+      : null;
+  const redirectUrl = safeSaveSlug ? `/${encodeURIComponent(safeSaveSlug)}` : '/codes';
 
   return `${renderHead({ title: `${isLogin ? 'Log In' : 'Sign Up'} - CodeeFlow` })}
 <body>
